@@ -1,0 +1,56 @@
+# =============================================================================
+# VISTA: utilidadYMargen
+# =============================================================================
+# Concentrado de Utilidad y Margen por Artículo de todas las sucursales.
+# Fuente principal: partidasVenta (tiene costoTotal, utilidadBruta, margenBruto)
+# complementado con catalogoProductos (nombre, línea, marca) y ventas (sucursal).
+# =============================================================================
+
+views:
+  - name: utilidadYMargen
+    title: "Utilidad y Margen por Artículo"
+    description: "Concentrado de utilidad bruta y margen por artículo y sucursal"
+
+    cubes:
+      # Cubo principal: partidas con medidas de costo y utilidad
+      - join_path: partidasVenta
+        includes:
+          - sucursal
+          - fecha
+          - anio
+          - numMes
+          - nombreMes
+          - skuRaw
+          - precio
+          - cantidad_dim
+          - cantidadVendida
+          - costoTotal
+
+          - name: ingresoTotalViable
+            alias: ventaBruta
+
+          - name: utilidadBruta
+            alias: utilidad
+
+          - name: margenBruto
+            alias: margen
+
+      # Catálogo: nombre, línea y marca del artículo
+      - join_path: catalogoProductos
+        includes:
+          - name: descripcion
+            alias: nombreProducto
+          - linea
+          - marca
+
+    dimensions:
+      - name: id
+        sql: "{partidasVenta.venta} || '-' || {partidasVenta.skuRaw} || '-' || {partidasVenta.sucursal}"
+        type: string
+        primary_key: true
+        title: "ID Único"
+
+      - name: sku
+        sql: "{partidasVenta.skuRaw}"
+        type: string
+        title: "SKU"
