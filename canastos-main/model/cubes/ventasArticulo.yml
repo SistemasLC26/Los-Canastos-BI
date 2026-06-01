@@ -34,18 +34,11 @@ cubes:
     public: true
 
     sql: |
-      -- =========================================================
-      -- Agrega partidas de venta viables por artículo, fecha y sucursal.
-      -- LPAD normaliza el SKU a 5 dígitos con ceros para que el join
-      -- con catalogoLineas (que usa el mismo formato) sea correcto.
-      -- Solo incluye partidas is_viable = true para excluir registros
-      -- cancelados, erróneos o duplicados.
-      -- =========================================================
       SELECT
-        LPAD(articulo, 5, '0')                                          AS sku,
+        articulo                                                         AS sku,
         sucursal,
         partition_date                                                   AS fecha,
-        SUM(precio * cantidad * (1 - COALESCE(descuento, 0) / 100.0))  AS importe,
+        SUM(precio * cantidad * (1 - COALESCE(descuento, 0) / 100.0))    AS importe,
         SUM(
           CASE
             WHEN impuesto = 16
@@ -60,11 +53,14 @@ cubes:
       FROM canastos_tfx.tfx_table_partvta
       WHERE is_viable = true
       GROUP BY
-        LPAD(articulo, 5, '0'),
+        articulo,
         sucursal,
         partition_date
 
-    joins: []
+    joins: 
+      - name: catalogoLineas
+        relationship: many_to_one
+        sql: "{CUBE}.sku = {catalogoLineas.sku}"
 
     # -------------------------------------------------------------------------
     # DIMENSIONES
