@@ -35,13 +35,13 @@ cubes:
 
     sql: |
       SELECT
-        LPAD(CAST(articulo AS VARCHAR), 5, '0') AS sku,
+        articulo     AS sku,
         MAX(linea)   AS linea,
         MAX(marca)   AS marca,
         MAX(descrip) AS producto
       FROM canastos_tfx.tfx_table_inv
       WHERE articulo IS NOT NULL
-      GROUP BY LPAD(CAST(articulo AS VARCHAR), 5, '0')
+      GROUP BY articulo
     # -------------------------------------------------------------------------
     # JOINS
     # Este cubo es un catálogo de solo lectura (lookup).
