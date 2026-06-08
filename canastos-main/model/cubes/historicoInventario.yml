@@ -55,7 +55,7 @@ cubes:
         GROUP BY articulo
       ) AS p
         -- TRY_CAST tolera que articulo sea string en inv y número en partvta.
-        ON CAST(inv.articulo AS BIGINT) = TRY_CAST(p.articulo AS BIGINT)
+        ON inv.articulo = p.articulo
 
     joins: [] # Sin relaciones a otros cubos por ahora
 
