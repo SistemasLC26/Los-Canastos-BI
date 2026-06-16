@@ -4,9 +4,8 @@
 # Vista pública para dashboards de efectivo.
 # Expone únicamente los campos necesarios del cubo reporteEfectivo.
 # =============================================================================
-
 views:
-  - name: reporteEfectivo
+  - name: reporteEfectivoView
     title: "Reporte de Efectivo"
 
     cubes:
