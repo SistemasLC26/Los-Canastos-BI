@@ -1,0 +1,151 @@
+cubes:
+  - name: reporteEfectivo
+
+    sql: |
+      WITH ventas_pago AS (
+          SELECT
+              CAST(SUBSTR(v.usufecha, 1, 10) AS DATE) AS fecha,
+              v.sucursal,
+
+              SUM(CASE WHEN v.pago1 > 0 AND v.pago2 = 0 THEN v.importe + v.impuesto ELSE 0 END) AS efectivo,
+              SUM(CASE WHEN v.pago2 > 0 AND v.pago1 = 0 THEN v.importe + v.impuesto ELSE 0 END) AS tarjeta,
+              SUM(CASE WHEN v.pago1 > 0 AND v.pago2 > 0 THEN v.importe + v.impuesto ELSE 0 END) AS mixtas,
+              SUM(CASE WHEN v.pago3 > 0 THEN v.importe + v.impuesto ELSE 0 END) AS pago3,
+
+              SUM(v.importe + v.impuesto) AS ventas_totales,
+              COUNT(*) AS tickets
+
+          FROM canastos_tfx.tfx_table_ventas v
+          WHERE v.estado = 'CO'
+            AND regexp_like(v.usufecha, '^20[0-9]{2}-')
+          GROUP BY
+              CAST(SUBSTR(v.usufecha, 1, 10) AS DATE),
+              v.sucursal
+      ),
+
+      cortes AS (
+          SELECT
+              CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE) AS fecha,
+              cx.sucursal,
+              cx.corte AS tipo_corte,
+              cx.cajero,
+
+              SUM(cx.totalventas) AS total_corte,
+              SUM(cx.totalcaja) AS total_caja,
+              SUM(cx.itotal) AS total_itotal,
+              SUM(cx.ventascredito) AS ventas_credito,
+              SUM(cx.clientesatendidos) AS clientes_atendidos
+
+          FROM canastos_tfx.tfx_table_corteszx cx
+          WHERE regexp_like(cx.usufecha, '^20[0-9]{2}-')
+          GROUP BY
+              CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE),
+              cx.sucursal,
+              cx.corte,
+              cx.cajero
+      )
+
+      SELECT
+          COALESCE(v.fecha, c.fecha) AS fecha,
+          COALESCE(v.sucursal, c.sucursal) AS sucursal,
+
+          c.tipo_corte,
+          c.cajero,
+
+          COALESCE(v.efectivo, 0) AS efectivo,
+          COALESCE(v.tarjeta, 0) AS tarjeta,
+          COALESCE(v.mixtas, 0) AS mixtas,
+          COALESCE(v.pago3, 0) AS pago3,
+
+          COALESCE(v.ventas_totales, 0) AS ventas_totales,
+          COALESCE(v.tickets, 0) AS tickets,
+
+          COALESCE(c.total_corte, 0) AS total_corte,
+          COALESCE(c.total_caja, 0) AS total_caja,
+          COALESCE(c.total_itotal, 0) AS total_itotal,
+          COALESCE(c.ventas_credito, 0) AS ventas_credito,
+          COALESCE(c.clientes_atendidos, 0) AS clientes_atendidos
+
+      FROM ventas_pago v
+      FULL OUTER JOIN cortes c
+          ON v.fecha = c.fecha
+         AND v.sucursal = c.sucursal
+
+    dimensions:
+      - name: fecha
+        sql: fecha
+        type: time
+
+      - name: sucursal
+        sql: sucursal
+        type: string
+
+      - name: tipoCorte
+        title: "Tipo Corte"
+        sql: tipo_corte
+        type: string
+
+      - name: cajero
+        sql: cajero
+        type: string
+
+    measures:
+      - name: efectivo
+        sql: efectivo
+        type: sum
+        format: currency
+
+      - name: tarjeta
+        sql: tarjeta
+        type: sum
+        format: currency
+
+      - name: mixtas
+        sql: mixtas
+        type: sum
+        format: currency
+
+      - name: pago3
+        title: "Pago 3"
+        sql: pago3
+        type: sum
+        format: currency
+
+      - name: ventasTotales
+        title: "Ventas Totales"
+        sql: ventas_totales
+        type: sum
+        format: currency
+
+      - name: tickets
+        sql: tickets
+        type: sum
+
+      - name: totalCorte
+        title: "Total Corte"
+        sql: total_corte
+        type: sum
+        format: currency
+
+      - name: totalCaja
+        title: "Total Caja"
+        sql: total_caja
+        type: sum
+        format: currency
+
+      - name: totalItotal
+        title: "Total iTotal"
+        sql: total_itotal
+        type: sum
+        format: currency
+
+      - name: ventasCredito
+        title: "Ventas Crédito"
+        sql: ventas_credito
+        type: sum
+        format: currency
+
+      - name: clientesAtendidos
+        title: "Clientes Atendidos"
+        sql: clientes_atendidos
+        type: sum

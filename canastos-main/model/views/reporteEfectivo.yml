@@ -1,0 +1,29 @@
+# =============================================================================
+# VISTA: reporteEfectivo
+# =============================================================================
+# Vista pública para dashboards de efectivo.
+# Expone únicamente los campos necesarios del cubo reporteEfectivo.
+# =============================================================================
+
+views:
+  - name: reporteEfectivo
+    title: "Reporte de Efectivo"
+
+    cubes:
+      - join_path: reporteEfectivo
+        includes:
+          - fecha
+          - sucursal
+          - tipoCorte
+          - cajero
+          - efectivo
+          - tarjeta
+          - mixtas
+          - pago3
+          - ventasTotales
+          - tickets
+          - totalCorte
+          - totalCaja
+          - totalItotal
+          - ventasCredito
+          - clientesAtendidos
