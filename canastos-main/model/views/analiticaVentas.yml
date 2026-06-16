@@ -99,7 +99,7 @@ views:
     dimensions:
       # Llave primaria de la vista: combina folio y SKU para identificar
       # de forma única cada línea de análisis en el explorador de datos.
-      - name: id
+      - name: analiticaVentas_ID
         sql: "{partidasVenta.venta} || '-' || {partidasVenta.skuRaw}"
         type: string
         primary_key: true

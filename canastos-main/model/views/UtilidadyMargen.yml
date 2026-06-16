@@ -44,7 +44,7 @@ views:
           - marca
 
     dimensions:
-      - name: id
+      - name: utilidadYMargen_ID
         sql: "{partidasVenta.venta} || '-' || {partidasVenta.skuRaw} || '-' || {partidasVenta.sucursal}"
         type: string
         primary_key: true
