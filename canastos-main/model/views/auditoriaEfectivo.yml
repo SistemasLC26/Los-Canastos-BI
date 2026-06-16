@@ -1,151 +1,70 @@
-# =============================================================================
-# VISTA: auditoriaEfectivo
-# =============================================================================
-# Esta vista expone el cubo cortesDiarios enfocado en el CONTROL Y AUDITORÍA
-# DE EFECTIVO por corte de caja individual.
-#
-# A diferencia de reconciliacionDiaria (que agrega por día+sucursal cruzando
-# dos cubos), esta vista opera a nivel de corte individual, lo que permite
-# identificar exactamente qué caja, en qué hora y en qué día presentó
-# un faltante o sobrante.
-#
-# LÓGICA CENTRAL:
-#   diferencia = efectivoCaja - ventasReportadasZ
-#   Positivo → sobrante (se contó más efectivo del que reportó el sistema)
-#   Negativo → faltante (se contó menos efectivo del que reportó el sistema)
-#   Cero     → cuadre perfecto
-#
-# ⚠️ FIX 2026-04:
-#   Se eliminó el workaround de fecha. Ahora incluye datos completos usando
-#   TRY_CAST para tolerar el schema drift de TORREON ARCOIRIS.
-#   Se agregaron medidas de tasa 8% (IEPS).
-#
-# Relación con otros cubos:
-#   → Consume únicamente cortesDiarios.
-#   → No agrega joins propios; hereda la estructura del cubo base.
-# =============================================================================
-
 views:
   - name: auditoriaEfectivo
     title: "3. Auditoría de Efectivo"
-    description: |
-      Auditoría y control de efectivo por corte de caja.
-      Compara efectivo recaudado vs ventas reportadas en Z.
+    description: "Auditoría del conteo físico de efectivo por corte, cajero y sucursal."
 
-      FIX 2026-04: Se eliminó el workaround de fecha. Ahora incluye datos
-      completos usando TRY_CAST para tolerar el schema drift de TORREON ARCOIRIS.
-      Se agregaron medidas de tasa 8% (IEPS).
+    public: true
 
-    public: true # Visible en playground y disponible para dashboards
-
-    # -------------------------------------------------------------------------
-    # CUBOS INCLUIDOS
-    # Se incluye el subconjunto de campos necesario para auditoría de efectivo.
-    # Se omiten campos de deduplicación y metadatos técnicos del cubo base.
-    # -------------------------------------------------------------------------
     cubes:
-      # Única fuente de esta vista: registros individuales de corte de caja.
-      # Permite auditar a nivel de caja + hora + día, sin agregación previa.
       - join_path: cortesDiarios
         includes:
-          # --- Dimensiones de tiempo ---
-          - fechaCorte # Fecha del corte para filtros por día
-          - anio # Agrupación anual
-          - numMes # Agrupación mensual (orden cronológico)
-          - nombreMes # Etiqueta legible del mes para reportes
-          - diaSemana # Análisis de comportamiento por día de la semana
+          - fechaCorte
+          - sucursal
+          - estacion
+          - numeroCorte
+          - tipoCorte
+          - horaCorte
+          - cajero
+          - cadenaSalida
 
-          # --- Dimensiones operativas ---
-          - sucursal # Filtro y agrupación por sucursal
-          - estacion # Identificación de la caja específica
-          - numeroCorte # Consecutivo del corte dentro de la estación
-          - tipoCorte # z = cierre de día / x = corte parcial
-          - horaCorte # Hora exacta del corte; útil para detectar patrones
-
-          # --- Medidas de efectivo y ventas ---
-          - ventasReportadasZ # Total vendido según el sistema (base de comparación)
-          - efectivoCaja # Efectivo físico contado por el cajero
-          - totalIngresos # Total ingresos por todas las formas de pago
+          - efectivoCaja
+          - ventasReportadasZ
+          - totalIngresos
           - clientesAtendidos
-          - ticketPromedioZ
-          - conteoCortes # Número de cortes; útil para validar integridad
+          - conteoCortes
 
-          # --- Desglose de impuestos IVA 16% y 0% ---
-          - ventasConImpuesto10 # Base gravable 16%
-          - impuesto10 # Monto IVA 16%
-          - ventasConImpuesto15 # Ventas exentas 0%
-          - impuesto15 # IVA 0% (siempre cero)
+          - billetes1000
+          - billetes500
+          - billetes200
+          - billetes100
+          - billetes50
+          - billetes20
+          - monedas10
+          - monedas5
+          - monedas2
+          - monedas1
 
-          # --- Desglose IEPS 8% — agregado FIX 2026-04 ---
-          - ventas8 # Base gravable IEPS 8%
-          - impuesto8 # Monto IEPS 8%
-
-    # -------------------------------------------------------------------------
-    # MEDIDAS PROPIAS DE LA VISTA
-    # Calculadas a partir de campos del cubo base.
-    # No existen en cortesDiarios; son exclusivas de esta auditoría.
-    # -------------------------------------------------------------------------
     measures:
-      # Brecha entre el efectivo contado y lo que reportó el sistema.
-      # Es la métrica principal de esta vista.
-      # Positivo = sobrante | Negativo = faltante | Cero = cuadre perfecto
-      - name: diferencia
-        sql: "{cortesDiarios.efectivoCaja} - {cortesDiarios.ventasReportadasZ}"
+      - name: totalConteoFisico
+        title: "Total Conteo Físico"
         type: number
         format: currency
-        title: "Diferencia (Efectivo - Venta Z)"
-        description: |
-          Positivo = Sobrante | Negativo = Faltante | Cero = Cuadre perfecto
-
-      # Diferencia expresada como porcentaje de las ventas reportadas.
-      # Útil para comparar la magnitud del desfase entre cajas de distinto volumen.
-      # NULLIF evita división por cero en cortes sin ventas registradas.
-      - name: porcentajeDiferencia
         sql: |
-          ({cortesDiarios.efectivoCaja} - {cortesDiarios.ventasReportadasZ})
-          / NULLIF({cortesDiarios.ventasReportadasZ}, 0) * 100
+          ({cortesDiarios.billetes1000} * 1000)
+          + ({cortesDiarios.billetes500} * 500)
+          + ({cortesDiarios.billetes200} * 200)
+          + ({cortesDiarios.billetes100} * 100)
+          + ({cortesDiarios.billetes50} * 50)
+          + ({cortesDiarios.billetes20} * 20)
+          + ({cortesDiarios.monedas10} * 10)
+          + ({cortesDiarios.monedas5} * 5)
+          + ({cortesDiarios.monedas2} * 2)
+          + ({cortesDiarios.monedas1} * 1)
+
+      - name: diferenciaConteoVsCaja
+        title: "Diferencia Conteo vs Caja"
         type: number
-        format: percent
-        title: "% Diferencia"
-
-    # -------------------------------------------------------------------------
-    # SEGMENTOS
-    # Filtros predefinidos para acotar el análisis según el tipo de diferencia.
-    # Se pueden combinar entre sí en una misma consulta.
-    # -------------------------------------------------------------------------
-    segments:
-      # Cortes donde el cajero entregó menos efectivo del que reportó el sistema.
-      # Son los casos prioritarios de revisión en auditoría.
-      - name: conFaltantes
-        sql: "{cortesDiarios.efectivoCaja} < {cortesDiarios.ventasReportadasZ}"
-        title: "Con Faltantes de Caja"
-
-      # Cortes donde el cajero entregó más efectivo del que reportó el sistema.
-      # Puede indicar errores de captura o ingresos no registrados.
-      - name: conSobrantes
-        sql: "{cortesDiarios.efectivoCaja} > {cortesDiarios.ventasReportadasZ}"
-        title: "Con Sobrantes de Caja"
-
-      # Cortes con cuadre perfecto (efectivo = ventas reportadas).
-      # Útil como línea base para comparar contra cajas con diferencias.
-      - name: cuadrados
-        sql: "{cortesDiarios.efectivoCaja} = {cortesDiarios.ventasReportadasZ}"
-        title: "Cuadrados (Sin Diferencia)"
-
-      # Filtra solo cierres de día; excluye cortes X (parciales).
-      # Recomendado para reportes de auditoría diaria.
-      - name: soloZ
-        sql: "{cortesDiarios.tipoCorte} = 'z'"
-        title: "Solo Cortes Z"
-
-      # Excluye la estación COBRANZA, que registra pagos de crédito,
-      # no ventas directas de mostrador, para no distorsionar el análisis.
-      - name: sinCobranza
-        sql: "{cortesDiarios.estacion} != 'COBRANZA'"
-        title: "Sin Estación Cobranza"
-
-      # Filtra solo los cortes con una brecha absoluta mayor a $1,000.
-      # Permite enfocarse en diferencias materiales e ignorar variaciones menores.
-      - name: diferenciaSignificativa
-        sql: "ABS({cortesDiarios.efectivoCaja} - {cortesDiarios.ventasReportadasZ}) > 1000"
-        title: "Diferencia > $1,000"
+        format: currency
+        sql: |
+          (
+            ({cortesDiarios.billetes1000} * 1000)
+            + ({cortesDiarios.billetes500} * 500)
+            + ({cortesDiarios.billetes200} * 200)
+            + ({cortesDiarios.billetes100} * 100)
+            + ({cortesDiarios.billetes50} * 50)
+            + ({cortesDiarios.billetes20} * 20)
+            + ({cortesDiarios.monedas10} * 10)
+            + ({cortesDiarios.monedas5} * 5)
+            + ({cortesDiarios.monedas2} * 2)
+            + ({cortesDiarios.monedas1} * 1)
+          ) - {cortesDiarios.efectivoCaja}
