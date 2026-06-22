@@ -82,7 +82,7 @@ cubes:
         -- Métricas operativas
         SUM(TRY_CAST(clientesatendidos AS INTEGER))                       AS clientes_atendidos,
         COUNT(*)                                                          AS num_cortes_z        -- Número de cajas que hicieron corte Z ese día
-      FROM canastos_tfx.tfx_table_cortes
+      FROM canastos_tfx.tfx_table_corteszx
       WHERE corte = 'z'                          -- Solo cierres de día
         AND sucursal != 'DPBodega-Test'          -- Excluir entorno de pruebas
         AND (estacion IS NULL OR estacion != 'COBRANZA')  -- Excluir pagos de crédito
