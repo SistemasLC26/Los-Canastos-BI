@@ -174,7 +174,7 @@ cubes:
         title: "Fecha Corte"
         sql: fecha
         type: time
-            - name: anio
+      - name: anio
         title: "Año"
         sql: "year(fecha)"
         type: number
