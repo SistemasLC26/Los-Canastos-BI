@@ -13,6 +13,12 @@ views:
           - horaCorte
           - cajero
 
+          - anio
+          - mes
+          - dia
+          - diaSemana
+          - nombreMes
+
           - efectivoCaja
           - ventasReportadasZ
           - diferenciaConteoVsCaja
