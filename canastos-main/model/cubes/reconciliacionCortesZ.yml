@@ -6,7 +6,7 @@
 # este cubo pre-agrega en el SQL para obtener UNA sola fila por fecha+sucursal,
 # lo que facilita la reconciliación directa contra el cubo de ventas del sistema.
 #
-# Fuente de datos: canastos_tfx.tfx_table_cortes
+# Fuente de datos: canastos_tfx.tfx_table_corteszx
 #
 # FILTROS APLICADOS EN LA FUENTE:
 #   - Solo cortes tipo 'z' (cierres de día; excluye cortes X parciales)
