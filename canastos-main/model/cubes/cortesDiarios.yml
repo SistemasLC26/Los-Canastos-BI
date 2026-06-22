@@ -27,6 +27,7 @@ cubes:
     # TRY_CAST en todos los campos numéricos para tolerar schema drift en Parquet
     # (columnas que a veces llegan como string y a veces como número).
     # Se excluye 'DPBodega-Test' porque es un entorno de pruebas, no producción.
+
     sql: |
       SELECT
         numerocorte,
@@ -39,17 +40,35 @@ cubes:
         usufecha,
         partition_date,
         clientesatendidos,
-        cort_id,
-        TRY_CAST(totalventas      AS DOUBLE) AS totalventas,       -- Total vendido según el corte
-        TRY_CAST(totalcaja        AS DOUBLE) AS totalcaja,         -- Efectivo físico contado en caja
-        TRY_CAST(totalingresos    AS DOUBLE) AS totalingresos,     -- Ingresos totales (todas las formas de pago)
-        TRY_CAST(ventasimpuesto10 AS DOUBLE) AS ventasimpuesto10,  -- Base gravable al 16% de IVA
-        TRY_CAST(impuesto10       AS DOUBLE) AS impuesto10,        -- Monto de IVA 16%
-        TRY_CAST(ventasimpuesto15 AS DOUBLE) AS ventasimpuesto15,  -- Ventas exentas (tasa 0%)
-        TRY_CAST(impuesto15       AS DOUBLE) AS impuesto15,        -- IVA 0% (siempre cero, requerido por estructura)
-        TRY_CAST(clientesatendidos AS INTEGER) AS clientes_int     -- Cast a entero para sumas y promedios correctos
-      FROM canastos_tfx.tfx_table_cortes
-      WHERE sucursal != 'DPBodega-Test'   -- Excluir sucursal de pruebas
+        CAST(estacion AS VARCHAR) || '-' || CAST(numerocorte AS VARCHAR) || '-' || corte AS cort_id,
+        TRY_CAST(totalventas      AS DOUBLE) AS totalventas,
+        TRY_CAST(totalcaja        AS DOUBLE) AS totalcaja,
+        TRY_CAST(totalingresos    AS DOUBLE) AS totalingresos,
+        TRY_CAST(ventasimpuesto10 AS DOUBLE) AS ventasimpuesto10,
+        TRY_CAST(impuesto10       AS DOUBLE) AS impuesto10,
+        TRY_CAST(ventasimpuesto15 AS DOUBLE) AS ventasimpuesto15,
+        TRY_CAST(impuesto15       AS DOUBLE) AS impuesto15,
+        TRY_CAST(clientesatendidos AS INTEGER) AS clientes_int
+      FROM (
+        SELECT
+          estacion, sucursal, numerocorte, cajero, cadenasalida,
+          usuhora, usufecha, partition_date, clientesatendidos,
+          totalventas, totalcaja, totalingresos,
+          ventasimpuesto10, impuesto10, ventasimpuesto15, impuesto15,
+          'z' AS corte
+        FROM canastos_tfx.tfx_table_corteszx
+
+        UNION ALL
+
+        SELECT
+          estacion, sucursal, numerocorte, cajero, cadenasalida,
+          usuhora, usufecha, partition_date, clientesatendidos,
+          totalventas, totalcaja, totalingresos,
+          ventasimpuesto10, impuesto10, ventasimpuesto15, impuesto15,
+          'x' AS corte
+        FROM canastos_tfx.tfx_table_cortesxx
+      )
+      WHERE sucursal != 'DPBodega-Test'
 
     public: false # No exponer este cube en el playgr   ound público
 
