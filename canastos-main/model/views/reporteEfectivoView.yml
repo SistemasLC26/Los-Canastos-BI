@@ -15,10 +15,14 @@ views:
           - sucursal
           - tipoCorte
           - cajero
+
+          # Pagos
           - efectivo
           - tarjeta
           - mixtas
           - pago3
+
+          # Totales de corte
           - ventasTotales
           - tickets
           - totalCorte
@@ -26,3 +30,23 @@ views:
           - totalItotal
           - ventasCredito
           - clientesAtendidos
+
+          # Ventas por impuesto
+          - ventas0
+          - impuesto0
+          - ventas8
+          - impuesto8
+          - ventas16
+          - impuesto16
+
+          # Devoluciones
+          - devoluciones0
+          - devoluciones8
+          - impuestoDevoluciones8
+          - devoluciones16
+          - impuestoDevoluciones16
+          - totalDevoluciones
+
+          # Diferencias
+          - diferenciaCorte
+          - tipoDiferencia

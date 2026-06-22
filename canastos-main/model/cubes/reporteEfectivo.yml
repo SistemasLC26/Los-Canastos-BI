@@ -16,14 +16,14 @@ cubes:
               COUNT(*) AS tickets
 
           FROM canastos_tfx.tfx_table_ventas v
-          WHERE v.estado = 'CO'
+          WHERE v.estado IN ('CO','CA')
             AND regexp_like(v.usufecha, '^20[0-9]{2}-')
           GROUP BY
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE),
               v.sucursal
       ),
 
-      cortes AS (
+      impuestos_corte AS (
           SELECT
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE) AS fecha,
               cx.sucursal,
@@ -34,7 +34,47 @@ cubes:
               SUM(cx.totalcaja) AS total_caja,
               SUM(cx.itotal) AS total_itotal,
               SUM(cx.ventascredito) AS ventas_credito,
-              SUM(cx.clientesatendidos) AS clientes_atendidos
+              SUM(cx.clientesatendidos) AS clientes_atendidos,
+
+              SUM(cx.ventasimpuesto15) AS ventas0,
+              SUM(cx.impuesto15) AS impuesto0,
+
+              SUM(
+                  (
+                      cx.totalventas -
+                      (
+                          cx.impuesto15 +
+                          cx.impuesto10 +
+                          cx.ventasimpuesto10 +
+                          cx.ventasimpuesto15
+                      )
+                  ) / 1.08
+              ) AS ventas8,
+
+              SUM(
+                  (
+                      (
+                          cx.totalventas -
+                          (
+                              cx.impuesto15 +
+                              cx.impuesto10 +
+                              cx.ventasimpuesto10 +
+                              cx.ventasimpuesto15
+                          )
+                      ) / 1.08
+                  ) * 0.08
+              ) AS impuesto8,
+
+              SUM(cx.ventasimpuesto10) AS ventas16,
+              SUM(cx.impuesto10) AS impuesto16,
+
+              SUM(
+                  CASE
+                      WHEN cx.totalcaja - cx.itotal > 0 THEN -(cx.totalcaja - cx.itotal)
+                      WHEN cx.totalcaja - cx.itotal < 0 THEN ABS(cx.totalcaja - cx.itotal)
+                      ELSE 0
+                  END
+              ) AS diferencia_corte
 
           FROM canastos_tfx.tfx_table_corteszx cx
           WHERE regexp_like(cx.usufecha, '^20[0-9]{2}-')
@@ -43,14 +83,37 @@ cubes:
               cx.sucursal,
               cx.corte,
               cx.cajero
+      ),
+
+      devoluciones AS (
+          SELECT
+              CAST(SUBSTR(v.usufecha, 1, 10) AS DATE) AS fecha,
+              v.sucursal,
+
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 0 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones0,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 8 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones8,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 8 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) * 0.08 ELSE 0 END) AS impuesto_devoluciones8,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 16 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones16,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 16 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) * 0.16 ELSE 0 END) AS impuesto_devoluciones16,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') THEN v.importe + v.impuesto ELSE 0 END) AS total_devoluciones
+
+          FROM canastos_tfx.tfx_table_ventas v
+          INNER JOIN canastos_tfx.tfx_table_partvta p
+              ON v.venta = p.venta
+             AND v.sucursal = p.sucursal
+          WHERE v.estado IN ('CO','CA')
+            AND regexp_like(v.usufecha, '^20[0-9]{2}-')
+          GROUP BY
+              CAST(SUBSTR(v.usufecha, 1, 10) AS DATE),
+              v.sucursal
       )
 
       SELECT
-          COALESCE(v.fecha, c.fecha) AS fecha,
-          COALESCE(v.sucursal, c.sucursal) AS sucursal,
+          COALESCE(i.fecha, v.fecha, d.fecha) AS fecha,
+          COALESCE(i.sucursal, v.sucursal, d.sucursal) AS sucursal,
 
-          c.tipo_corte,
-          c.cajero,
+          i.tipo_corte,
+          i.cajero,
 
           COALESCE(v.efectivo, 0) AS efectivo,
           COALESCE(v.tarjeta, 0) AS tarjeta,
@@ -60,16 +123,41 @@ cubes:
           COALESCE(v.ventas_totales, 0) AS ventas_totales,
           COALESCE(v.tickets, 0) AS tickets,
 
-          COALESCE(c.total_corte, 0) AS total_corte,
-          COALESCE(c.total_caja, 0) AS total_caja,
-          COALESCE(c.total_itotal, 0) AS total_itotal,
-          COALESCE(c.ventas_credito, 0) AS ventas_credito,
-          COALESCE(c.clientes_atendidos, 0) AS clientes_atendidos
+          COALESCE(i.total_corte, 0) AS total_corte,
+          COALESCE(i.total_caja, 0) AS total_caja,
+          COALESCE(i.total_itotal, 0) AS total_itotal,
+          COALESCE(i.ventas_credito, 0) AS ventas_credito,
+          COALESCE(i.clientes_atendidos, 0) AS clientes_atendidos,
 
-      FROM ventas_pago v
-      FULL OUTER JOIN cortes c
-          ON v.fecha = c.fecha
-         AND v.sucursal = c.sucursal
+          COALESCE(i.ventas0, 0) AS ventas0,
+          COALESCE(i.impuesto0, 0) AS impuesto0,
+          COALESCE(i.ventas8, 0) AS ventas8,
+          COALESCE(i.impuesto8, 0) AS impuesto8,
+          COALESCE(i.ventas16, 0) AS ventas16,
+          COALESCE(i.impuesto16, 0) AS impuesto16,
+
+          COALESCE(d.devoluciones0, 0) AS devoluciones0,
+          COALESCE(d.devoluciones8, 0) AS devoluciones8,
+          COALESCE(d.impuesto_devoluciones8, 0) AS impuesto_devoluciones8,
+          COALESCE(d.devoluciones16, 0) AS devoluciones16,
+          COALESCE(d.impuesto_devoluciones16, 0) AS impuesto_devoluciones16,
+          COALESCE(d.total_devoluciones, 0) AS total_devoluciones,
+
+          COALESCE(i.diferencia_corte, 0) AS diferencia_corte,
+
+          CASE
+              WHEN COALESCE(i.diferencia_corte, 0) = 0 THEN 'SIN DIF'
+              WHEN COALESCE(i.diferencia_corte, 0) < 0 THEN 'FALTANTE'
+              ELSE 'SOBRANTE'
+          END AS tipo_diferencia
+
+      FROM impuestos_corte i
+      FULL OUTER JOIN ventas_pago v
+          ON i.fecha = v.fecha
+         AND i.sucursal = v.sucursal
+      FULL OUTER JOIN devoluciones d
+          ON COALESCE(i.fecha, v.fecha) = d.fecha
+         AND COALESCE(i.sucursal, v.sucursal) = d.sucursal
 
     dimensions:
       - name: fecha
@@ -87,6 +175,11 @@ cubes:
 
       - name: cajero
         sql: cajero
+        type: string
+
+      - name: tipoDiferencia
+        title: "Tipo Diferencia"
+        sql: tipo_diferencia
         type: string
 
     measures:
@@ -149,3 +242,81 @@ cubes:
         title: "Clientes Atendidos"
         sql: clientes_atendidos
         type: sum
+
+      - name: ventas0
+        title: "Ventas 0%"
+        sql: ventas0
+        type: sum
+        format: currency
+
+      - name: impuesto0
+        title: "Impuesto 0%"
+        sql: impuesto0
+        type: sum
+        format: currency
+
+      - name: ventas8
+        title: "Ventas 8%"
+        sql: ventas8
+        type: sum
+        format: currency
+
+      - name: impuesto8
+        title: "Impuesto 8%"
+        sql: impuesto8
+        type: sum
+        format: currency
+
+      - name: ventas16
+        title: "Ventas 16%"
+        sql: ventas16
+        type: sum
+        format: currency
+
+      - name: impuesto16
+        title: "Impuesto 16%"
+        sql: impuesto16
+        type: sum
+        format: currency
+
+      - name: devoluciones0
+        title: "Devoluciones 0%"
+        sql: devoluciones0
+        type: sum
+        format: currency
+
+      - name: devoluciones8
+        title: "Devoluciones 8%"
+        sql: devoluciones8
+        type: sum
+        format: currency
+
+      - name: impuestoDevoluciones8
+        title: "Impuesto Devoluciones 8%"
+        sql: impuesto_devoluciones8
+        type: sum
+        format: currency
+
+      - name: devoluciones16
+        title: "Devoluciones 16%"
+        sql: devoluciones16
+        type: sum
+        format: currency
+
+      - name: impuestoDevoluciones16
+        title: "Impuesto Devoluciones 16%"
+        sql: impuesto_devoluciones16
+        type: sum
+        format: currency
+
+      - name: totalDevoluciones
+        title: "Total Devoluciones"
+        sql: total_devoluciones
+        type: sum
+        format: currency
+
+      - name: diferenciaCorte
+        title: "Diferencia Corte"
+        sql: diferencia_corte
+        type: sum
+        format: currency
