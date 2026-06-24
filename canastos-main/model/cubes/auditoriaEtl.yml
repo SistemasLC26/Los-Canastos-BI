@@ -138,7 +138,7 @@ cubes:
       # Última fecha de datos que el ETL alcanzó a procesar en esta corrida.
       # Sirve para detectar sucursales "atrasadas" si el watermark se estanca.
       - name: watermark
-        sql: "{CUBE}.watermark"
+        sql: "CAST({CUBE}.watermark AS DATE)"
         type: time
         title: "Watermark"
 
