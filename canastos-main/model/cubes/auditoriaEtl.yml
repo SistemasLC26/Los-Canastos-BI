@@ -1,0 +1,200 @@
+# =============================================================================
+# CUBO: auditoriaEtl
+# =============================================================================
+# Este cubo representa el LOG DE EJECUCIÓN del ETL que extrae datos desde las
+# sucursales (Compaq/POS) hacia Athena.
+#
+# Fuente de datos: canastos_tfx.audit_etl_status
+#
+# Cada fila es una corrida de extracción para un proceso/tabla/sucursal en una
+# fecha específica, con su resultado (SUCCESS/ERROR) y métricas básicas.
+#
+# Útil para monitorear salud del pipeline: qué sucursales fallaron, cuántas
+# filas se cargaron, y si hubo errores reportados por el ETL.
+#
+# ⚠️ NOTA: La llave primaria es compuesta (fecha + proceso + sucursal + tabla)
+#   porque el mismo proceso ETL corre una vez por sucursal y por tabla en
+#   cada fecha de ejecución.
+#
+# Relación con otros cubos:
+#   → Es independiente; no tiene joins. Sirve como cubo de monitoreo del
+#     pipeline, no de datos de negocio (ventas/inventario/etc).
+# =============================================================================
+
+cubes:
+  - name: auditoriaEtl
+    title: "Auditoría ETL"
+    sql_table: canastos_tfx.audit_etl_status
+    public: true # Visible en playground; cubo de monitoreo de pipeline
+
+    # -------------------------------------------------------------------------
+    # DIMENSIONES
+    # -------------------------------------------------------------------------
+    dimensions:
+      # Llave primaria compuesta: fecha + proceso + sucursal + tabla.
+      # No existe un ID único en la fuente, así que se construye concatenando
+      # los campos que identifican una corrida específica del ETL.
+      - name: id
+        sql: "{CUBE}.execution_date || '-' || {CUBE}.process || '-' || {CUBE}.sucursal || '-' || {CUBE}.table"
+        type: string
+        primary_key: true
+        title: "ID Sistema"
+
+      # Fecha en que se ejecutó la corrida del ETL (no la fecha de los datos
+      # extraídos, sino el día en que corrió el proceso).
+      - name: fechaEjecucion
+        title: "Fecha Ejecución"
+        sql: "{CUBE}.execution_date"
+        type: time
+
+      # Dimensiones temporales calculadas con EXTRACT() directamente sobre
+      # execution_date, siguiendo la Regla 19: no se usa join a "calendario"
+      # porque año/mes/día se pueden derivar con SQL nativo.
+      - name: anio
+        title: "Año"
+        sql: "EXTRACT(YEAR FROM {CUBE}.execution_date)"
+        type: number
+
+      - name: mes
+        title: "Mes"
+        sql: "EXTRACT(MONTH FROM {CUBE}.execution_date)"
+        type: number
+
+      - name: dia
+        title: "Día"
+        sql: "EXTRACT(DAY FROM {CUBE}.execution_date)"
+        type: number
+
+      - name: nombreMes
+        title: "Nombre Mes"
+        sql: |
+          CASE EXTRACT(MONTH FROM {CUBE}.execution_date)
+            WHEN 1 THEN 'Enero'
+            WHEN 2 THEN 'Febrero'
+            WHEN 3 THEN 'Marzo'
+            WHEN 4 THEN 'Abril'
+            WHEN 5 THEN 'Mayo'
+            WHEN 6 THEN 'Junio'
+            WHEN 7 THEN 'Julio'
+            WHEN 8 THEN 'Agosto'
+            WHEN 9 THEN 'Septiembre'
+            WHEN 10 THEN 'Octubre'
+            WHEN 11 THEN 'Noviembre'
+            WHEN 12 THEN 'Diciembre'
+          END
+        type: string
+
+      - name: diaSemana
+        title: "Día Semana"
+        sql: |
+          CASE day_of_week({CUBE}.execution_date)
+            WHEN 1 THEN 'Lunes'
+            WHEN 2 THEN 'Martes'
+            WHEN 3 THEN 'Miércoles'
+            WHEN 4 THEN 'Jueves'
+            WHEN 5 THEN 'Viernes'
+            WHEN 6 THEN 'Sábado'
+            WHEN 7 THEN 'Domingo'
+          END
+        type: string
+
+      # Nombre del proceso ETL que generó la corrida (ej: "EXTRACTION").
+      - name: proceso
+        sql: "{CUBE}.process"
+        type: string
+        title: "Proceso"
+
+      # Tipo de corrida del ETL (ej: "Completa" vs incremental/parcial).
+      - name: tipoCorrida
+        sql: "{CUBE}.run_type"
+        type: string
+        title: "Tipo Corrida"
+
+      # Sucursal de origen de los datos extraídos en esta corrida.
+      - name: sucursal
+        sql: "{CUBE}.sucursal"
+        type: string
+        title: "Sucursal"
+        public: true
+
+      # Nombre de la tabla destino que se está cargando (ej: "ventas", "inv").
+      - name: tabla
+        sql: "{CUBE}.table"
+        type: string
+        title: "Tabla"
+
+      # Resultado de la etapa de consulta/extracción de datos desde el origen.
+      - name: estadoConsulta
+        sql: "{CUBE}.query_status"
+        type: string
+        title: "Estado Consulta"
+
+      # Resultado de la etapa de carga de datos hacia el destino (Athena/S3).
+      - name: estadoCarga
+        sql: "{CUBE}.upload_status"
+        type: string
+        title: "Estado Carga"
+
+      # Última fecha de datos que el ETL alcanzó a procesar en esta corrida.
+      # Sirve para detectar sucursales "atrasadas" si el watermark se estanca.
+      - name: watermark
+        sql: "{CUBE}.watermark"
+        type: time
+        title: "Watermark"
+
+      # Mensaje de error reportado por el ETL, si lo hubo (NULL si fue exitoso).
+      - name: error
+        sql: "{CUBE}.error"
+        type: string
+        title: "Error"
+
+      # Bandera de conveniencia: marca la corrida como fallida si cualquiera
+      # de las dos etapas (consulta o carga) no terminó en SUCCESS.
+      - name: tieneError
+        title: "Tiene Error"
+        sql: |
+          CASE
+            WHEN {CUBE}.query_status != 'SUCCESS' OR {CUBE}.upload_status != 'SUCCESS' THEN 'Sí'
+            ELSE 'No'
+          END
+        type: string
+
+    # -------------------------------------------------------------------------
+    # MEDIDAS
+    # -------------------------------------------------------------------------
+    measures:
+      # Conteo simple de corridas registradas. Útil para ver volumen total
+      # de ejecuciones del ETL en un período/sucursal/proceso.
+      - name: conteo
+        type: count
+        title: "Total Corridas"
+
+      # Suma de filas cargadas por todas las corridas. Permite detectar caídas
+      # anormales de volumen (ej: una sucursal que de repente carga 0 filas).
+      - name: filasCargadas
+        title: "Filas Cargadas"
+        sql: "{CUBE}.rows"
+        type: sum
+
+      # Cuenta cuántas corridas tuvieron error en consulta o carga.
+      # Se construye con CASE + SUM (no con count + filtro) porque las vistas
+      # no pueden definir medidas propias y este patrón es reutilizable.
+      - name: corridasConError
+        title: "Corridas Con Error"
+        sql: |
+          CASE
+            WHEN {CUBE}.query_status != 'SUCCESS' OR {CUBE}.upload_status != 'SUCCESS' THEN 1
+            ELSE 0
+          END
+        type: sum
+
+      # Cuenta cuántas corridas terminaron exitosamente en ambas etapas.
+      # Complemento de corridasConError; juntas suman el total de corridas.
+      - name: corridasExitosas
+        title: "Corridas Exitosas"
+        sql: |
+          CASE
+            WHEN {CUBE}.query_status = 'SUCCESS' AND {CUBE}.upload_status = 'SUCCESS' THEN 1
+            ELSE 0
+          END
+        type: sum
