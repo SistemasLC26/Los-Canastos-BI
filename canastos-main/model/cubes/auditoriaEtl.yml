@@ -35,40 +35,41 @@ cubes:
       # No existe un ID único en la fuente, así que se construye concatenando
       # los campos que identifican una corrida específica del ETL.
       - name: id
-        sql: "{CUBE}.execution_date || '-' || {CUBE}.process || '-' || {CUBE}.sucursal || '-' || {CUBE}.table"
+        sql: '{CUBE}.execution_date || ''-'' || {CUBE}.process || ''-'' || {CUBE}.sucursal || ''-'' || {CUBE}."table"'
         type: string
         primary_key: true
         title: "ID Sistema"
 
       # Fecha en que se ejecutó la corrida del ETL (no la fecha de los datos
       # extraídos, sino el día en que corrió el proceso).
+      # NOTA: execution_date llega como varchar desde Athena, se castea a DATE.
       - name: fechaEjecucion
         title: "Fecha Ejecución"
-        sql: "{CUBE}.execution_date"
+        sql: "CAST({CUBE}.execution_date AS DATE)"
         type: time
 
-      # Dimensiones temporales calculadas con EXTRACT() directamente sobre
-      # execution_date, siguiendo la Regla 19: no se usa join a "calendario"
-      # porque año/mes/día se pueden derivar con SQL nativo.
+      # Dimensiones temporales calculadas con EXTRACT() sobre execution_date
+      # ya casteado a DATE, siguiendo la Regla 19: no se usa join a
+      # "calendario" porque año/mes/día se pueden derivar con SQL nativo.
       - name: anio
         title: "Año"
-        sql: "EXTRACT(YEAR FROM {CUBE}.execution_date)"
+        sql: "EXTRACT(YEAR FROM CAST({CUBE}.execution_date AS DATE))"
         type: number
 
       - name: mes
         title: "Mes"
-        sql: "EXTRACT(MONTH FROM {CUBE}.execution_date)"
+        sql: "EXTRACT(MONTH FROM CAST({CUBE}.execution_date AS DATE))"
         type: number
 
       - name: dia
         title: "Día"
-        sql: "EXTRACT(DAY FROM {CUBE}.execution_date)"
+        sql: "EXTRACT(DAY FROM CAST({CUBE}.execution_date AS DATE))"
         type: number
 
       - name: nombreMes
         title: "Nombre Mes"
         sql: |
-          CASE EXTRACT(MONTH FROM {CUBE}.execution_date)
+          CASE EXTRACT(MONTH FROM CAST({CUBE}.execution_date AS DATE))
             WHEN 1 THEN 'Enero'
             WHEN 2 THEN 'Febrero'
             WHEN 3 THEN 'Marzo'
@@ -87,7 +88,7 @@ cubes:
       - name: diaSemana
         title: "Día Semana"
         sql: |
-          CASE day_of_week({CUBE}.execution_date)
+          CASE day_of_week(CAST({CUBE}.execution_date AS DATE))
             WHEN 1 THEN 'Lunes'
             WHEN 2 THEN 'Martes'
             WHEN 3 THEN 'Miércoles'
@@ -118,8 +119,10 @@ cubes:
         public: true
 
       # Nombre de la tabla destino que se está cargando (ej: "ventas", "inv").
+      # NOTA: "table" es palabra reservada en Athena/Presto, se escapa con
+      # comillas dobles para que no choque con la sintaxis SQL.
       - name: tabla
-        sql: "{CUBE}.table"
+        sql: '{CUBE}."table"'
         type: string
         title: "Tabla"
 
@@ -140,7 +143,7 @@ cubes:
       # NOTA: la columna llega como varchar desde Athena, se castea a DATE
       # para poder ordenarla/compararla cronológicamente.
       - name: watermark
-        sql: "CAST({CUBE}.watermark AS DATE)"
+        sql: "CAST({CUBE}.watermark AS TIMESTAMP)"
         type: time
         title: "Watermark"
 
