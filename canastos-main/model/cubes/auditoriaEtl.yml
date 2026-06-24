@@ -45,7 +45,7 @@ cubes:
       # NOTA: execution_date llega como varchar desde Athena, se castea a DATE.
       - name: fechaEjecucion
         title: "Fecha Ejecución"
-        sql: "CAST({CUBE}.execution_date AS DATE)"
+        sql: "CAST({CUBE}.execution_date AS TIMESTAMP)"
         type: time
 
       # Dimensiones temporales calculadas con EXTRACT() sobre execution_date
