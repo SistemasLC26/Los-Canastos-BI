@@ -1,0 +1,67 @@
+# =============================================================================
+# CUBO: clientes
+# =============================================================================
+# Este cubo representa el CATÁLOGO DE CLIENTES registrados en el sistema.
+# Contiene el perfil básico de cada cliente por sucursal: código y nombre.
+#
+# Fuente de datos: canastos_tfx.tfx_table_clients
+#
+# ⚠️ NOTA: La llave primaria es compuesta (cliente + sucursal) porque un mismo
+#   cliente puede estar registrado en más de una sucursal con datos distintos.
+#
+# Relación con otros cubos:
+#   → Es el hijo de "ventas" (many_to_one): varios tickets pueden pertenecer
+#     al mismo cliente.
+#   → El join se realiza por codigoCliente + sucursal.
+# =============================================================================
+
+cubes:
+  - name: clientes
+    title: "Clientes"
+    sql_table: canastos_tfx.tfx_table_clients
+    public: true # Visible en playground; se usa como lookup en joins
+
+    # -------------------------------------------------------------------------
+    # DIMENSIONES
+    # -------------------------------------------------------------------------
+    dimensions:
+      # Llave primaria compuesta: cliente + sucursal.
+      # Un cliente puede estar registrado en múltiples sucursales con perfiles
+      # independientes, por lo que la unicidad requiere ambos campos.
+      - name: id
+        sql: "{CUBE}.cliente || '-' || {CUBE}.sucursal"
+        type: string
+        primary_key: true
+        title: "ID Sistema"
+
+      # Código alfanumérico del cliente en el ERP.
+      # Es el campo usado para el join con el cubo "ventas".
+      - name: codigoCliente
+        sql: "{CUBE}.cliente"
+        type: string
+        title: "Código Cliente"
+
+      # Nombre o razón social del cliente.
+      # Se expone como public para que sea visible en reportes y dashboards.
+      - name: nombreCliente
+        sql: "{CUBE}.nombre"
+        type: string
+        title: "Nombre"
+        public: true
+
+      # Sucursal donde está registrado el cliente.
+      # Parte de la llave compuesta; permite segmentar cartera por punto de venta.
+      - name: sucursal
+        sql: "{CUBE}.sucursal"
+        type: string
+        title: "Sucursal"
+
+    # -------------------------------------------------------------------------
+    # MEDIDAS
+    # -------------------------------------------------------------------------
+    measures:
+      # Conteo simple de registros de clientes.
+      # Útil para reportes de tamaño de cartera por sucursal o período.
+      - name: conteo
+        type: count
+        title: "Total Clientes"

@@ -1,0 +1,52 @@
+# =============================================================================
+# VISTA: ventasTipoPago
+# =============================================================================
+# Esta vista expone un subconjunto del cubo cortesDiarios enfocado en el
+# DESGLOSE DE VENTAS POR TIPO DE PAGO (efectivo vs tarjeta/otros).
+#
+# La lógica de separación se basa en los campos del corte Z:
+#   - Efectivo   → totalcaja    (dinero físico contado en caja)
+#   - Tarjeta    → totalventas - totalcaja  (diferencia = pagos no en efectivo)
+#
+# ⚠️ NOTA: Se recomienda usar el segmento cortesZ al consultar esta vista
+#   para evitar mezclar cortes parciales (X) con cierres de día (Z).
+#
+# Relación con cubos:
+#   → Consume únicamente cortesDiarios.
+#   → No agrega joins ni medidas propias; todo viene del cubo base.
+# =============================================================================
+
+views:
+  - name: ventasTipoPago
+    title: "4. Ventas por Tipo de Pago"
+    description: |
+      Desglose de ventas por tipo de pago usando cortes Z.
+      Efectivo = totalcaja
+      Tarjeta/Otros = totalventas - totalcaja
+
+    public: true # Visible en el playground y disponible para dashboards
+
+    cubes:
+      # Incluye solo las dimensiones y medidas relevantes para análisis de pago.
+      # Se omiten campos de impuestos y clientes para mantener la vista enfocada.
+      - join_path: cortesDiarios
+        includes:
+          # --- Dimensiones de tiempo ---
+          - fechaCorte # Fecha del corte para filtros por día
+          - anio # Agrupación anual
+          - numMes # Agrupación mensual (orden cronológico)
+          - nombreMes # Etiqueta legible del mes para reportes
+          - diaSemana # Análisis de comportamiento por día de la semana
+
+          # --- Dimensiones operativas ---
+          - sucursal # Filtro y agrupación por sucursal
+          - estacion # Detalle por caja individual
+          - tipoCorte # Distinguir cortes Z (cierre) de X (parcial)
+
+          # --- Medidas de tipo de pago ---
+          - ventasReportadasZ # Total vendido según el corte (base de comparación)
+          - efectivoCaja # Porción cobrada en efectivo
+          - ventasNoEfectivo # Porción cobrada con tarjeta u otros medios
+
+          # --- Medida operativa ---
+          - conteoCortes # Número de cortes; útil para validar integridad del período

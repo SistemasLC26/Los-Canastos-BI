@@ -1,0 +1,95 @@
+# =============================================================================
+# CUBO: catalogoLineas
+# =============================================================================
+# Este cubo es un CATÁLOGO DEDUPLICADO de artículos extraído de la tabla de
+# inventario histórico. A diferencia de historicoInventario (que tiene una
+# fila por artículo + sucursal + fecha de corte), este cubo garantiza
+# UNA SOLA FILA por SKU, lo que lo hace seguro para joins con partidasVenta
+# sin riesgo de multiplicar (fanout) las métricas de venta.
+#
+# Fuente de datos: canastos_tfx.tfx_table_inv
+#   → Se agrupa por SKU y se toma el MAX de línea, marca y descripción
+#     para colapsar todos los cortes históricos en un único registro por artículo.
+#
+# ¿Por qué no usar historicoInventario directamente?
+#   historicoInventario tiene múltiples filas por SKU (una por sucursal y fecha
+#   de corte). Al hacer join con partidasVenta, cada partida se multiplicaría
+#   por todos esos registros, inflando o anulando las métricas de venta.
+#   Este cubo resuelve ese problema colapsando todo a un registro por artículo.
+#
+# ¿Por qué no usar catalogoProductos?
+#   catalogoProductos filtra SOLO artículos con SKU numérico (TRY_CAST válido).
+#   Este cubo cubre todos los artículos independientemente del formato del SKU,
+#   lo que amplía la cobertura del reporte.
+#
+# Relación con otros cubos:
+#   → Es referenciado por "partidasVenta" como many_to_one por SKU.
+#   → La vista "analiticaLineas" lo consume para obtener línea, marca y producto.
+# =============================================================================
+
+cubes:
+  - name: catalogoLineas
+    title: "Catálogo de Líneas (Deduplicado)"
+    description: "Un registro por SKU con línea, marca y descripción. Seguro para joins con partidasVenta."
+    public: true
+
+    sql: |
+      SELECT
+        articulo     AS sku,
+        MAX(linea)   AS linea,
+        MAX(marca)   AS marca,
+        MAX(descrip) AS producto
+      FROM canastos_tfx.tfx_table_inv
+      WHERE articulo IS NOT NULL
+      GROUP BY articulo
+    # -------------------------------------------------------------------------
+    # JOINS
+    # Este cubo es un catálogo de solo lectura (lookup).
+    # No inicia joins — otros cubos (partidasVenta) se unen hacia él.
+    # -------------------------------------------------------------------------
+    joins: 
+      - name: ventasArticulo
+        relationship: one_to_many
+        sql: "{CUBE}.sku = {ventasArticulo.sku}"
+
+    # -------------------------------------------------------------------------
+    # DIMENSIONES
+    # Solo atributos descriptivos del artículo. Este cubo no tiene métricas
+    # porque su único propósito es aportar clasificación, no calcular valores.
+    # -------------------------------------------------------------------------
+    dimensions:
+      # Llave primaria: SKU como string, único por artículo en toda la empresa.
+      # Al estar deduplicado por GROUP BY, no hay riesgo de duplicados aquí.
+      - name: id
+        sql: "{CUBE}.sku"
+        type: string
+        primary_key: true
+        title: "SKU (ID)"
+
+      # Código del artículo en formato string.
+      # Usado para el join con partidasVenta.articulo.
+      - name: sku
+        sql: "{CUBE}.sku"
+        type: string
+        title: "SKU"
+
+      # Clave de la línea de producto (ej: B01, L02, A03).
+      # Es el agrupador principal del reporte "Ventas por Línea".
+      # Equivale a la columna "Línea" y al nivel de agrupación del reporte Excel.
+      - name: linea
+        sql: "{CUBE}.linea"
+        type: string
+        title: "Línea"
+
+      # Marca del artículo. Útil para análisis por proveedor o marca comercial.
+      - name: marca
+        sql: "{CUBE}.marca"
+        type: string
+        title: "Marca"
+
+      # Nombre descriptivo del artículo.
+      # Equivale a la columna "Descripción" del reporte Excel.
+      - name: producto
+        sql: "{CUBE}.producto"
+        type: string
+        title: "Producto"
