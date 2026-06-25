@@ -1,0 +1,195 @@
+# =============================================================================
+# VISTA: analiticaDevoluciones
+# =============================================================================
+# Esta vista expone el cubo ventasPorDocumento enfocado en el ANÁLISIS DE
+# DEVOLUCIONES por tipo de documento, sucursal, cliente y período.
+#
+# A diferencia de reconciliacionDiaria (que agrega por día+sucursal),
+# esta vista opera a nivel de documento individual, permitiendo identificar
+# patrones específicos de devolución por cliente, vendedor o sucursal.
+#
+# TIPOS DE DOCUMENTO RELEVANTES:
+#   REM = Remisión    (venta normal)
+#   FAC = Factura     (venta con comprobante fiscal)
+#   DEV = Devolución completa
+#   DV  = Devolución parcial
+#
+# CASOS DE USO:
+#   - Identificar patrones de devoluciones por sucursal/cliente
+#   - Calcular tasa de devoluciones sobre ventas brutas
+#   - Detectar devoluciones anómalas por monto o frecuencia
+#   - Comparar ventas brutas vs netas por período
+#
+# ⚠️ NOTA: Para comparar contra cortes Z, consultar 'auditoriaEfectivo'
+#   por separado y combinar manualmente por fecha + sucursal.
+#
+# Relación con otros cubos:
+#   → Consume únicamente ventasPorDocumento.
+#   → No agrega joins propios; hereda la estructura del cubo base.
+# =============================================================================
+
+views:
+  - name: analiticaDevoluciones
+    title: "5. Analítica de Devoluciones"
+    description: |
+      Análisis detallado de devoluciones por tipo de documento.
+      Permite analizar comportamiento de devoluciones por sucursal, fecha y cliente.
+
+      CASOS DE USO:
+      - Identificar patrones de devoluciones por sucursal/cliente
+      - Calcular tasa de devoluciones
+      - Analizar motivos de devolución
+      - Detectar devoluciones anormales
+      - Comparar ventas brutas vs netas
+
+      TIPOS DE DOCUMENTO:
+      - REM: Remisión (venta normal)
+      - FAC: Factura
+      - DEV: Devolución completa
+      - DV: Devolución parcial
+
+      NOTA: Para comparar con cortes Z, consultar 'auditoriaEfectivo'
+      de forma separada y combinar manualmente por fecha/sucursal.
+
+    public: true # Visible en playground y disponible para dashboards
+
+    # -------------------------------------------------------------------------
+    # CUBOS INCLUIDOS
+    # Se incluye el subconjunto de campos necesario para análisis de devoluciones.
+    # Se omiten campos técnicos de deduplicación y metadatos internos.
+    # -------------------------------------------------------------------------
+    cubes:
+      # Única fuente de esta vista: documentos individuales de venta/devolución.
+      # Permite analizar a nivel de folio, cliente y vendedor sin agregación previa.
+      - join_path: ventasPorDocumento
+        includes:
+          # --- Dimensiones de tiempo ---
+          - fechaVenta # Fecha del documento para filtros por día
+          - anio # Agrupación anual
+          - numMes # Agrupación mensual (orden cronológico)
+          - nombreMes # Etiqueta legible del mes para reportes
+          - diaSemana # Análisis de comportamiento por día de la semana
+
+          # --- Dimensiones operativas ---
+          - sucursal # Filtro y agrupación por sucursal
+          - tipoDocumento # REM, FAC, DEV, DV — determina si es venta o devolución
+          - estado # Estado del documento (CO = completado, PE = pendiente, etc.)
+          - numeroVenta # Folio del documento para trazabilidad individual
+          - cliente # Código de cliente; permite detectar clientes con alta tasa de devolución
+          - vendedor # Vendedor asociado al documento
+          - serieDocumento # Serie del comprobante; útil para agrupar por punto de emisión
+          - observaciones # Texto libre; puede contener motivo de devolución
+
+          # --- Medidas de importes ---
+          - importeTotal # Suma de todos los documentos sin distinción de tipo
+          - importeVentas # Solo documentos de venta (REM, FAC)
+          - importeDevoluciones # Solo documentos de devolución (DEV, DV)
+          - importeNeto # importeVentas - importeDevoluciones
+          - descuentoTotal # Descuentos aplicados en el período
+          - impuestoTotal # Impuestos registrados en los documentos
+          - precioTotal # Precio de venta total antes de descuentos
+          - costoTotal # Costo de los artículos involucrados
+
+          # --- Conteos de documentos ---
+          - conteoDocumentos # Total de documentos (ventas + devoluciones)
+          - conteoVentas # Solo documentos de venta
+          - conteoDevoluciones # Solo documentos de devolución
+          - porcentajeDevoluciones # Relación devoluciones/ventas pre-calculada en el cubo
+
+    # -------------------------------------------------------------------------
+    # MEDIDAS PROPIAS DE LA VISTA
+    # Calculadas a partir de campos del cubo base.
+    # No existen en ventasPorDocumento; son exclusivas de este análisis.
+    # -------------------------------------------------------------------------
+    measures:
+      # Porcentaje de devoluciones sobre las ventas brutas del período.
+      # NULLIF evita división por cero en períodos sin ventas registradas.
+      - name: tasaDevoluciones
+        sql: |
+          {ventasPorDocumento.importeDevoluciones}
+          / NULLIF({ventasPorDocumento.importeVentas}, 0) * 100
+        type: number
+        format: percent
+        title: "Tasa de Devoluciones (%)"
+        description: "Porcentaje de devoluciones sobre ventas brutas"
+
+      # Resultado real de ventas descontando lo devuelto.
+      # Equivalente a importeNeto del cubo base pero calculado explícitamente.
+      - name: ventasNetas
+        sql: "{ventasPorDocumento.importeVentas} - {ventasPorDocumento.importeDevoluciones}"
+        type: number
+        format: currency
+        title: "Ventas Netas"
+        description: "Ventas brutas menos devoluciones"
+
+      # Monto típico de cada devolución individual.
+      # Útil para detectar devoluciones anómalas por monto inusualmente alto.
+      # NULLIF evita división por cero cuando no hay devoluciones en el período.
+      - name: promedioDevolucion
+        sql: |
+          {ventasPorDocumento.importeDevoluciones}
+          / NULLIF({ventasPorDocumento.conteoDevoluciones}, 0)
+        type: number
+        format: currency
+        title: "Promedio por Devolución"
+        description: "Importe promedio de cada devolución"
+
+      # Monto típico de cada venta individual.
+      # Comparar con promedioDevolucion para detectar devoluciones desproporcionadas.
+      # NULLIF evita división por cero cuando no hay ventas en el período.
+      - name: promedioVenta
+        sql: |
+          {ventasPorDocumento.importeVentas}
+          / NULLIF({ventasPorDocumento.conteoVentas}, 0)
+        type: number
+        format: currency
+        title: "Promedio por Venta"
+        description: "Importe promedio de cada venta"
+
+    # -------------------------------------------------------------------------
+    # SEGMENTOS
+    # Filtros predefinidos para acotar el análisis según el caso de uso.
+    # Se pueden combinar entre sí en una misma consulta.
+    # -------------------------------------------------------------------------
+    segments:
+      # Muestra solo documentos de devolución (DEV y DV).
+      # Usar cuando el análisis se enfoca exclusivamente en lo devuelto.
+      - name: soloDevoluciones
+        sql: "{ventasPorDocumento.tipoDocumento} IN ('DEV', 'DV')"
+        title: "Solo Devoluciones"
+        description: "Filtra solo documentos de devolución"
+
+      # Muestra solo documentos de venta (REM y FAC).
+      # Usar para analizar ventas sin que las devoluciones distorsionen los totales.
+      - name: soloVentas
+        sql: "{ventasPorDocumento.tipoDocumento} IN ('REM', 'FAC')"
+        title: "Solo Ventas"
+        description: "Filtra solo documentos de venta"
+
+      # Filtra devoluciones con monto mayor a $500.
+      # Permite enfocarse en devoluciones materiales e ignorar ajustes menores.
+      - name: devolucionesAltas
+        sql: "{ventasPorDocumento.importeDevoluciones} > 500"
+        title: "Devoluciones Altas (> $500)"
+        description: "Devoluciones individuales mayores a $500"
+
+      # Filtra períodos o documentos que tuvieron al menos una devolución.
+      # Útil como punto de entrada antes de aplicar segmentos más específicos.
+      - name: conDevoluciones
+        sql: "{ventasPorDocumento.importeDevoluciones} > 0"
+        title: "Períodos con Devoluciones"
+        description: "Fechas/sucursales que tuvieron devoluciones"
+
+      # Excluye documentos cancelados, erróneos o de prueba.
+      # Recomendado activar en la mayoría de los análisis para evitar ruido.
+      - name: documentosViables
+        sql: "{ventasPorDocumento.esViable} = true"
+        title: "Solo Documentos Viables"
+        description: "Excluye cancelados o no válidos"
+
+      # Filtra solo documentos con estado 'CO' (completado).
+      # Excluye pedidos pendientes o documentos en proceso que aún pueden modificarse.
+      - name: documentosCompletados
+        sql: "{ventasPorDocumento.estado} = 'CO'"
+        title: "Solo Completados"
+        description: "Solo documentos con estado completado"

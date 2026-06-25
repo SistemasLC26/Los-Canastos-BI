@@ -1,0 +1,164 @@
+# =============================================================================
+# CUBO: ventasArticulo
+# =============================================================================
+# Este cubo agrega las métricas de venta (importe, impuesto, cantidad) a nivel
+# de artículo, fecha y sucursal. Es el complemento de catalogoLineas:
+# mientras catalogoLineas aporta la clasificación del artículo (línea, marca,
+# descripción), ventasArticulo aporta los números de venta filtrables.
+#
+# Fuente de datos: canastos_tfx.tfx_table_partvta
+#   → Agrupa por articulo + sucursal + fecha para permitir filtros dinámicos
+#     desde el dashboard de Preset sin perder la granularidad temporal.
+#
+# ¿Por qué un cubo separado de catalogoLineas?
+#   Si las métricas vivieran en catalogoLineas, se calcularían sobre el total
+#   histórico sin posibilidad de filtrar por fecha o sucursal desde Preset.
+#   Al tener un cubo separado, Cube puede aplicar los filtros del dashboard
+#   directamente sobre las partidas de venta antes de agregar.
+#
+# ¿Por qué no usar partidasVenta directamente?
+#   partidasVenta tiene granularidad de partida individual (una fila por
+#   artículo por ticket). ventasArticulo pre-agrega por articulo + fecha +
+#   sucursal, lo que es más eficiente para reportes de línea donde no se
+#   necesita el detalle por ticket.
+#
+# Relación con otros cubos:
+#   → Se une con catalogoLineas como many_to_one por SKU (LPAD normalizado).
+#   → La vista analiticaLineas lo consume como cubo principal de métricas.
+# =============================================================================
+
+cubes:
+  - name: ventasArticulo
+    title: "Ventas por Artículo"
+    description: "Métricas de venta agregadas por artículo, fecha y sucursal. Filtrable desde Preset."
+    public: true
+
+    sql: |
+      SELECT
+        articulo                                                         AS sku,
+        sucursal,
+        partition_date                                                   AS fecha,
+        SUM(precio * cantidad * (1 - COALESCE(descuento, 0) / 100.0))    AS importe,
+        SUM(
+          CASE
+            WHEN impuesto = 16
+            THEN precio * cantidad * (1 - COALESCE(descuento, 0) / 100.0) * 0.16
+            WHEN impuesto = 8
+            THEN precio * cantidad * (1 - COALESCE(descuento, 0) / 100.0) * 0.08
+            ELSE 0
+          END
+        )                                                                AS impuesto,
+        SUM(cantidad)                                                    AS cant_vendida,
+        COUNT(DISTINCT venta)                                            AS num_tickets
+      FROM canastos_tfx.tfx_table_partvta
+      WHERE is_viable = true
+      GROUP BY
+        articulo,
+        sucursal,
+        partition_date
+
+    joins: 
+      - name: catalogoLineas
+        relationship: many_to_one
+        sql: "{CUBE}.sku = {catalogoLineas.sku}"
+
+    # -------------------------------------------------------------------------
+    # DIMENSIONES
+    # -------------------------------------------------------------------------
+    dimensions:
+      # Llave primaria: SKU + sucursal + fecha garantizan unicidad por fila.
+      - name: id
+        sql: "{CUBE}.sku || '-' || {CUBE}.sucursal || '-' || CAST({CUBE}.fecha AS VARCHAR)"
+        type: string
+        primary_key: true
+        title: "ID Venta Artículo"
+
+      # SKU normalizado a 5 dígitos. Coincide con catalogoLineas.sku.
+      - name: sku
+        sql: "{CUBE}.sku"
+        type: string
+        title: "SKU"
+
+      # Sucursal donde se realizaron las ventas.
+      # Es el campo que se usará para el filtro de sucursal en Preset.
+      - name: sucursal
+        sql: "{CUBE}.sucursal"
+        type: string
+        title: "Sucursal"
+
+      # Fecha de la transacción.
+      # Es el campo que se usará para el filtro de fecha en Preset.
+      - name: fecha
+        sql: "{CUBE}.fecha"
+        type: time
+        title: "Fecha"
+
+      # Año extraído de fecha. Útil para agrupaciones anuales.
+      - name: anio
+        sql: "EXTRACT(YEAR FROM {CUBE}.fecha)"
+        type: number
+        title: "Año"
+
+      # Número de mes (1–12). Para ordenar correctamente en gráficas.
+      - name: numMes
+        sql: "EXTRACT(MONTH FROM {CUBE}.fecha)"
+        type: number
+        title: "Mes (Num)"
+
+      # Nombre del mes en español para etiquetas en reportes.
+      - name: nombreMes
+        sql: |
+          CASE EXTRACT(MONTH FROM {CUBE}.fecha)
+            WHEN 1  THEN 'Enero'      WHEN 2  THEN 'Febrero'    WHEN 3  THEN 'Marzo'
+            WHEN 4  THEN 'Abril'      WHEN 5  THEN 'Mayo'       WHEN 6  THEN 'Junio'
+            WHEN 7  THEN 'Julio'      WHEN 8  THEN 'Agosto'     WHEN 9  THEN 'Septiembre'
+            WHEN 10 THEN 'Octubre'    WHEN 11 THEN 'Noviembre'  WHEN 12 THEN 'Diciembre'
+          END
+        type: string
+        title: "Mes"
+
+    # -------------------------------------------------------------------------
+    # MEDIDAS
+    # Todas las métricas se calculan en el SQL del cubo (pre-agregadas).
+    # Aquí solo se exponen con type: sum para que Cube pueda re-agregarlas
+    # cuando el usuario agrupa por línea, sucursal, fecha, etc.
+    # -------------------------------------------------------------------------
+    measures:
+      # Importe base = precio × cantidad × (1 - descuento%).
+      # Pre-calculado en el SQL. Cube lo re-agrega según el GROUP BY del reporte.
+      # Equivale a la columna "Importe" del reporte Excel original.
+      - name: importe
+        sql: "{CUBE}.importe"
+        type: sum
+        format: currency
+        title: "Importe"
+
+      # Impuesto calculado por tasa (IVA 16% o IEPS 8%).
+      # Pre-calculado en el SQL con CASE WHEN por tasa de impuesto.
+      # Equivale a la columna "Impuesto" del reporte Excel original.
+      - name: impuesto
+        sql: "{CUBE}.impuesto"
+        type: sum
+        format: currency
+        title: "Impuesto"
+
+      # Total = importe + impuesto. Lo que pagó realmente el cliente.
+      # Equivale a la columna "Total" del reporte Excel original.
+      - name: total
+        sql: "{CUBE}.importe + {CUBE}.impuesto"
+        type: sum
+        format: currency
+        title: "Total"
+
+      # Unidades físicas vendidas.
+      # Equivale a "Cant. Vendida" del reporte Excel original.
+      - name: cantVendida
+        sql: "{CUBE}.cant_vendida"
+        type: sum
+        title: "Cant. Vendida"
+
+      # Número de tickets (folios) únicos en el período.
+      - name: conteoTickets
+        sql: "{CUBE}.num_tickets"
+        type: sum
+        title: "# Tickets"

@@ -1,0 +1,73 @@
+# =============================================================================
+# VISTA: analiticaLineas
+# =============================================================================
+# Vista genérica de ventas agrupadas por línea y artículo.
+# Combina el detalle de ventas (partidasVenta) con el catálogo de productos
+# (catalogoLineas) para exponer en un solo lugar las dimensiones de
+# clasificación del inventario junto con las métricas de venta.
+#
+# Casos de uso principales:
+#   - Reporte "Ventas por Línea de Artículo" (equivalente al reporte Excel
+#     generado desde el sistema contable original)
+#   - Análisis de desempeño por línea, marca o artículo individual
+#   - Base para rankings de productos más vendidos por categoría
+#
+# Cubos que consolida:
+#   1. partidasVenta      → métricas de venta (importe, impuesto, cantidad)
+#   2. catalogoLineas  → clasificación del artículo (línea, marca, descripción)
+#
+# ¿Por qué una vista separada de analiticaVentas?
+#   analiticaVentas también incluye el cabecero (ventas) para datos de cliente
+#   y tipo de documento, lo que agrega complejidad y joins innecesarios cuando
+#   solo se necesita analizar a nivel artículo/línea. Esta vista es más ligera
+#   y directa para reportes de producto.
+#
+# Nota sobre SKUs alfanuméricos:
+#   catalogoLineas filtra solo artículos con SKU numérico (TRY_CAST válido).
+#   Los artículos con código alfanumérico no aparecerán en esta vista hasta
+#   que se amplíe el catálogo para incluirlos.
+# =============================================================================
+
+views:
+  - name: analiticaLineas
+    title: "2. Analítica por Línea de Artículo"
+    description: "Vista genérica de ventas por línea, marca y artículo con métricas de importe, impuesto y cantidad"
+
+    cubes:
+      # -----------------------------------------------------------------------
+      # BLOQUE 1: ventasArticulo — métricas filtrables por fecha y sucursal
+      # Es el cubo principal de esta vista. Pre-agrega las ventas por artículo
+      # + fecha + sucursal, permitiendo filtros dinámicos desde Preset.
+      # -----------------------------------------------------------------------
+      - join_path: catalogoLineas
+        includes:
+          - linea
+          - marca
+          - name: producto
+            alias: nombreProducto
+          - name: sku
+            alias: codigoArticulo
+
+      # -----------------------------------------------------------------------
+      # BLOQUE 2: catalogoLineas — dimensiones del artículo
+      # Accedido a través de ventasArticulo → catalogoLineas.
+      # -----------------------------------------------------------------------
+      - join_path: catalogoLineas.ventasArticulo
+        includes:
+          - sucursal
+          - fecha
+          - anio
+          - numMes
+          - nombreMes
+          - importe
+          - impuesto
+          - total
+          - cantVendida
+          - conteoTickets
+
+    dimensions:
+      - name: analiticaLineas_ID
+        sql: "{ventasArticulo.sku} || '-' || {ventasArticulo.sucursal}"
+        type: string
+        primary_key: true
+        title: "ID Único"

@@ -1,0 +1,200 @@
+# =============================================================================
+# VISTA: reconciliacionDiaria
+# =============================================================================
+# Esta vista cruza DOS cubos para comparar lo que reportó el sistema ERP
+# contra lo que registraron los cortes Z del POS, por día y sucursal.
+#
+# CUBOS QUE COMBINA:
+#   ← reconciliacionVentasDiarias  →  ventas, devoluciones, costos del ERP
+#   ← reconciliacionCortesZ        →  efectivo, ingresos e impuestos del POS
+#
+# CLAVES PARA INTERPRETAR LOS RESULTADOS:
+#   1. El reporte Z NO resta devoluciones → comparar siempre contra ventas BRUTAS
+#   2. Ventas Z incluye todos los métodos de pago (efectivo + tarjeta + crédito)
+#   3. Efectivo Caja = solo efectivo físico; la diferencia normal es 40-80% por tarjetas
+#   4. Una sucursal puede tener múltiples cajas → la vista suma todos los cortes Z del día
+#
+# ⚠️ FIX 2026-04:
+#   Se agregaron medidas de tasa 8% (IEPS) y se eliminó el workaround de fecha.
+#   Ahora incluye datos completos sin corte en Nov 2025.
+#
+# Relación con otros cubos:
+#   → reconciliacionVentasDiarias  (lado ERP / sistema)
+#   → reconciliacionCortesZ        (lado POS / caja)
+# =============================================================================
+
+views:
+  - name: reconciliacionDiaria
+    title: "4. Reconciliación Diaria (Ventas vs Cortes Z)"
+    description: |
+      Reconciliación entre ventas del sistema ERP y cortes Z del POS.
+      Agregación: DÍA + SUCURSAL
+
+      CLAVES PARA INTERPRETAR:
+      1. El reporte Z NO resta devoluciones → Comparar con Ventas BRUTAS del sistema
+      2. Ventas Z = todos los métodos de pago (efectivo + tarjeta + crédito)
+      3. Efectivo Caja = solo efectivo físico (diferencia normal: 40-80% por tarjetas)
+      4. Una sucursal puede tener múltiples cajas → esta vista suma todos los cortes Z del día
+
+      FIX 2026-04: Se agregaron medidas de tasa 8% (IEPS) y se eliminó el workaround
+      de fecha — ahora incluye datos completos sin corte en Nov 2025.
+
+    public: true # Visible en playground y disponible para dashboards
+
+    # -------------------------------------------------------------------------
+    # CUBOS INCLUIDOS
+    # Se incluye solo el subconjunto de campos relevante para reconciliación.
+    # Campos de detalle interno (IDs, flags técnicos) se omiten intencionalmente.
+    # -------------------------------------------------------------------------
+    cubes:
+      # ── Lado ERP / Sistema ─────────────────────────────────────────────────
+      # Aporta las cifras oficiales de ventas, devoluciones, costos e impuestos
+      # tal como los registró el sistema contable.
+      - join_path: reconciliacionVentasDiarias
+        includes:
+          # Dimensiones de tiempo y lugar
+          - sucursal
+          - anio
+          - numMes
+          - nombreMes
+          - diaSemana
+          - fecha
+
+          # Métricas de ventas del ERP
+          - ventasBrutas # Total vendido antes de descontar devoluciones
+          - devoluciones # Monto devuelto (no reflejado en cortes Z)
+          - ventasNetas # ventasBrutas - devoluciones
+          - numVentas # Número de transacciones de venta
+          - numDevoluciones # Número de transacciones de devolución
+          - descuentos # Descuentos aplicados en el período
+          - impuestos # Impuestos registrados en el ERP
+          - costos # Costo de los artículos vendidos
+
+      # ── Lado POS / Caja ────────────────────────────────────────────────────
+      # Aporta las cifras del cierre físico de caja: efectivo, ingresos
+      # e impuestos reportados por el punto de venta.
+      - join_path: reconciliacionCortesZ
+        includes:
+          # Métricas de cierre de caja
+          - ventasZ # Total vendido según cortes Z (todas las formas de pago)
+          - efectivoCaja # Solo efectivo físico contado
+          - diferenciaZ # Faltante/sobrante: efectivo - ventas Z
+          - totalIngresos # Total ingresos por todas las formas de pago
+          - retirosEfectivo # Ingresos no en efectivo (tarjeta/crédito)
+
+          # Métricas operativas de caja
+          - clientesAtendidos
+          - ticketPromedioZ
+          - numCortesZ # Cajas que realizaron corte Z en el día
+
+          # Desglose de impuestos IVA 16% y 0%
+          - ventasImpuesto10 # Base gravable 16%
+          - impuesto10 # Monto IVA 16%
+          - ventasImpuesto15 # Ventas exentas 0%
+          - impuesto15 # IVA 0% (siempre cero)
+
+          # Desglose IEPS 8% — agregado FIX 2026-04
+          - ventas8 # Base gravable IEPS 8%
+          - impuesto8 # Monto IEPS 8%
+          - totalImpuestosDesglosados # Suma de los tres impuestos para validación
+
+    # -------------------------------------------------------------------------
+    # MEDIDAS PROPIAS DE LA VISTA
+    # Calculadas cruzando campos de ambos cubos.
+    # No existen en ningún cubo base; son exclusivas de esta reconciliación.
+    # -------------------------------------------------------------------------
+    measures:
+      # Brecha entre lo que registró el ERP y lo que reportó el POS.
+      # Positivo = ERP > POS (sistema registró más de lo que cerró la caja)
+      # Negativo = POS > ERP (la caja reportó más de lo que entró al sistema)
+      - name: diferenciaSistemaVsZ
+        sql: "{reconciliacionVentasDiarias.ventasBrutas} - {reconciliacionCortesZ.ventasZ}"
+        type: number
+        format: currency
+        title: "Diferencia: Sistema vs Z"
+        description: |
+          (Ventas Brutas Sistema) - (Ventas Z)
+          Positivo = Sistema > Z | Negativo = Z > Sistema
+
+      # Brecha entre el efectivo físico contado y el total reportado en el corte Z.
+      # En condiciones normales debería ser negativo (hay ventas con tarjeta).
+      - name: diferenciaEfectivoVsZ
+        sql: "{reconciliacionCortesZ.efectivoCaja} - {reconciliacionCortesZ.ventasZ}"
+        type: number
+        format: currency
+        title: "Diferencia: Efectivo vs Ventas Z"
+
+      # Monto devuelto en el ERP que NO aparece en los cortes Z.
+      # Útil para explicar diferencias entre sistema y POS.
+      - name: impactoDevoluciones
+        sql: "{reconciliacionVentasDiarias.devoluciones}"
+        type: number
+        format: currency
+        title: "Devoluciones (no en Z)"
+
+      # Estimación de ventas cobradas con tarjeta u otros medios.
+      # Se obtiene restando total_ingresos (solo efectivo) de ventas_z (todo).
+      - name: ventasNoEfectivo
+        sql: "{reconciliacionCortesZ.ventasZ} - {reconciliacionCortesZ.totalIngresos}"
+        type: number
+        format: currency
+        title: "Ventas No-Efectivo (estimado)"
+
+      # Proporción de ventas cobradas sin efectivo sobre el total del corte Z.
+      # NULLIF evita división por cero en días sin ventas.
+      - name: porcentajeVentasNoEfectivo
+        sql: |
+          ({reconciliacionCortesZ.ventasZ} - {reconciliacionCortesZ.totalIngresos})
+          / NULLIF({reconciliacionCortesZ.ventasZ}, 0) * 100
+        type: number
+        format: percent
+        title: "% Ventas No-Efectivo"
+
+      # Tasa de devoluciones sobre ventas brutas del ERP.
+      # NULLIF evita división por cero en días sin ventas.
+      - name: tasaDevoluciones
+        sql: |
+          {reconciliacionVentasDiarias.devoluciones}
+          / NULLIF({reconciliacionVentasDiarias.ventasBrutas}, 0) * 100
+        type: number
+        format: percent
+        title: "% Devoluciones"
+
+      # Qué tan lejos están el ERP y el POS en términos relativos.
+      # Útil para priorizar sucursales que requieren revisión.
+      - name: porcentajeDiferenciaSistemaVsZ
+        sql: |
+          ({reconciliacionVentasDiarias.ventasBrutas} - {reconciliacionCortesZ.ventasZ})
+          / NULLIF({reconciliacionCortesZ.ventasZ}, 0) * 100
+        type: number
+        format: percent
+        title: "% Diferencia Sistema vs Z"
+
+    # -------------------------------------------------------------------------
+    # SEGMENTOS
+    # Filtros predefinidos para acotar el análisis a casos de interés.
+    # -------------------------------------------------------------------------
+    segments:
+      # Días en que se registró al menos una devolución en el ERP.
+      - name: conDevoluciones
+        sql: "{reconciliacionVentasDiarias.devoluciones} > 0"
+        title: "Con Devoluciones"
+
+      # Días en que el ERP reportó más ventas que el POS.
+      # Puede indicar ventas registradas en sistema pero no cerradas en caja.
+      - name: sistemaMayorQueZ
+        sql: "{reconciliacionVentasDiarias.ventasBrutas} > {reconciliacionCortesZ.ventasZ}"
+        title: "Sistema > Z"
+
+      # Días en que el POS reportó más ventas que el ERP.
+      # Puede indicar cortes Z sin contrapartida en el sistema contable.
+      - name: zMayorQueSistema
+        sql: "{reconciliacionVentasDiarias.ventasBrutas} < {reconciliacionCortesZ.ventasZ}"
+        title: "Z > Sistema"
+
+      # Filtra solo los días con una brecha absoluta mayor a $1,000.
+      # Útil para enfocarse en diferencias materiales e ignorar ruido menor.
+      - name: diferenciaSignificativa
+        sql: |
+          ABS({reconciliacionVentasDiarias.ventasBrutas} - {reconciliacionCortesZ.ventasZ}) > 1000
+        title: "Diferencia > $1,000"

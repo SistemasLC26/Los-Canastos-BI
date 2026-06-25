@@ -1,0 +1,55 @@
+views:
+  - name: auditoriaEfectivoView
+    title: "Auditoría Efectivo"
+
+    cubes:
+      - join_path: auditoriaEfectivo
+        includes:
+          - fechaCorte
+          - sucursal
+          - estacion
+          - numeroCorte
+          - tipoCorte
+          - horaCorte
+          - cajero
+
+          - anio
+          - mes
+          - dia
+          - diaSemana
+          - nombreMes
+
+          - efectivoCaja
+          - ventasReportadasZ
+          - diferenciaConteoVsCaja
+          - diferencia
+          - porcentajeDiferencia
+          - diferenciaSignificativa
+          - tipoDiferencia
+
+          - efectivo
+          - tarjeta
+          - mixtas
+          - pago3
+
+          - ventasTotales
+          - tickets
+          - totalCorte
+          - totalCaja
+          - totalItotal
+          - ventasCredito
+          - clientesAtendidos
+
+          - ventas0
+          - impuesto0
+          - ventas8
+          - impuesto8
+          - ventas16
+          - impuesto16
+
+          - devoluciones0
+          - devoluciones8
+          - impuestoDevoluciones8
+          - devoluciones16
+          - impuestoDevoluciones16
+          - totalDevoluciones
