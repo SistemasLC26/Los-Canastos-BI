@@ -32,8 +32,8 @@ views:
           - name: utilidadBruta
             alias: utilidad
 
-          - name: margenBruto
-            alias: margen
+          # - name: margenBruto
+          #   alias: margen
 
       # Catálogo: nombre, línea y marca del artículo
       - join_path: catalogoProductos
@@ -54,3 +54,12 @@ views:
         sql: "{partidasVenta.skuRaw}"
         type: string
         title: "SKU"
+
+    measures:
+      - name: margen
+        sql: >
+          {partidasVenta.utilidadBruta}
+          / NULLIF({partidasVenta.ingresoTotalViable}, 0)
+        type: number
+        format: percent
+        title: "Margen Bruto %"
