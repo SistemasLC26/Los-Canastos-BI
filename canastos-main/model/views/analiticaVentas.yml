@@ -134,8 +134,22 @@ views:
       # Esta es la cifra que el cliente pagó realmente (precio con impuestos incluidos).
       # Se calcula sumando la base gravable (ventaBruta) más los impuestos correspondientes.
       - name: ventaTotal
-        sql: "{partidasVenta.ingresoTotalViable} + {partidasVenta.totalImpuestosCalculados}"
-        type: sum
+        sql: |
+          SUM(
+            CASE WHEN {partidasVenta}.is_viable = true
+            THEN
+              {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0)
+              +
+              CASE
+                WHEN {partidasVenta}.impuesto = 16
+                THEN {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0) * 0.16
+                WHEN {partidasVenta}.impuesto = 8
+                THEN {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0) * 0.08
+                ELSE 0
+              END
+            ELSE 0 END
+          )
+        type: number
         format: currency
         title: "Venta Total (Final)"
 
@@ -145,7 +159,14 @@ views:
       # contable para los tipos de documento finales (FAC, REM, DV, DEV).
       # Útil para cuadrar con los reportes fiscales del sistema original.
       - name: impuestoRealSinDuplicar
-        sql: "{partidasVenta.ventas.impuestoSinDuplicar}"
-        type: sum
+        sql: |
+          SUM(
+            CASE
+              WHEN {partidasVenta.ventas}.tipo_doc IN ('FAC', 'REM', 'DV', 'DEV')
+              THEN {partidasVenta.ventas}.impuesto
+              ELSE 0
+            END
+          )
+        type: number
         format: currency
         title: "Impuestos Reales (Sin Duplicados)"
