@@ -37,12 +37,14 @@ cubes:
     sql: |
       SELECT
         CAST(articulo AS VARCHAR) as sku_str,   -- SKU como texto para joins con tablas string
+        CAST(articulo AS BIGINT)  as sku_int,   -- SKU como entero para joins con tablas numéricas
         MAX(descrip) as descripcion,            -- Nombre del producto (MAX para desduplicar)
         MAX(linea)   as linea,                  -- Línea/categoría del producto
         MAX(marca)   as marca                   -- Marca del producto
       FROM canastos_tfx.tfx_table_inv
       GROUP BY
         CAST(articulo AS VARCHAR),
+        CAST(articulo AS BIGINT)                -- Un registro por SKU único a nivel empresa
 
     # -------------------------------------------------------------------------
     # DIMENSIONES
