@@ -135,7 +135,7 @@ views:
       # Se calcula sumando la base gravable (ventaBruta) más los impuestos correspondientes.
       - name: ventaTotal
         sql: "{partidasVenta.ingresoTotalViable} + {partidasVenta.totalImpuestosCalculados}"
-        type: number
+        type: sum
         format: currency
         title: "Venta Total (Final)"
 
@@ -146,6 +146,6 @@ views:
       # Útil para cuadrar con los reportes fiscales del sistema original.
       - name: impuestoRealSinDuplicar
         sql: "{partidasVenta.ventas.impuestoSinDuplicar}"
-        type: number
+        type: sum
         format: currency
         title: "Impuestos Reales (Sin Duplicados)"
