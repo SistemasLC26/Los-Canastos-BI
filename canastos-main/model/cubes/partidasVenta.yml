@@ -127,7 +127,7 @@ cubes:
         sql: |
           CASE 
             WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
-            THEN {CUBE}.precio * 0.70   -- Estimación: margen bruto del 20%
+            THEN {CUBE}.precio * 0.80   -- Estimación: margen bruto del 20%
             ELSE {CUBE}.costo           -- Costo real registrado
           END
         type: number
@@ -288,7 +288,7 @@ cubes:
               WHEN {CUBE}.costo <= 0 
                 OR {CUBE}.costo > {CUBE}.precio 
                 
-              THEN {CUBE}.precio * 0.70
+              THEN {CUBE}.precio * 0.80
               ELSE {CUBE}.costo
             END
             * {CUBE}.cantidad
@@ -296,7 +296,6 @@ cubes:
         type: number
         format: currency
         title: "Costo Total"
-        filters: [{ sql: "{CUBE}.is_viable = true" }]
 
       - name: utilidadBruta
         sql: >
@@ -304,7 +303,7 @@ cubes:
           - SUM(
               CASE 
                 WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
-                THEN {CUBE}.precio * 0.70
+                THEN {CUBE}.precio * 0.80
                 ELSE {CUBE}.costo
               END
               * {CUBE}.cantidad
@@ -312,7 +311,6 @@ cubes:
         type: number
         format: currency
         title: "Utilidad Bruta"
-        filters: [{ sql: "{CUBE}.is_viable = true" }]
 
       - name: margenBruto
         sql: >
@@ -321,7 +319,7 @@ cubes:
             - SUM(
                 CASE 
                   WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
-                  THEN {CUBE}.precio * 0.70
+                  THEN {CUBE}.precio * 0.80
                   ELSE {CUBE}.costo
                 END
                 * {CUBE}.cantidad
@@ -333,4 +331,3 @@ cubes:
         type: number
         format: percent
         title: "Margen Bruto %"
-        filters: [{ sql: "{CUBE}.is_viable = true" }]
