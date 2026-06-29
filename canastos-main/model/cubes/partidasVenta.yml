@@ -285,51 +285,66 @@ cubes:
       - name: costoTotal
         sql: >
           SUM(
-            CASE 
-              WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
-              THEN {CUBE}.precio * 0.70
-              ELSE {CUBE}.costo
-            END
-            * {CUBE}.cantidad
-          )
-        type: number
-        format: currency
-        title: "Costo Total"
-        filters: [{ sql: "{CUBE}.is_viable = true" }]
-
-      - name: utilidadBruta
-        sql: >
-          SUM({CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0))
-          - SUM(
+            CASE WHEN {CUBE}.is_viable = true
+            THEN
               CASE 
                 WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
                 THEN {CUBE}.precio * 0.70
                 ELSE {CUBE}.costo
-              END
-              * {CUBE}.cantidad
-            )
+              END * {CUBE}.cantidad
+            ELSE 0 END
+          )
         type: number
         format: currency
-        title: "Utilidad Bruta"
-        filters: [{ sql: "{CUBE}.is_viable = true" }]
+        title: "Costo Total"
 
-      - name: margenBruto
+      - name: utilidadBruta
         sql: >
-          (
-            SUM({CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0))
-            - SUM(
+          SUM(
+            CASE WHEN {CUBE}.is_viable = true
+            THEN {CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0)
+            ELSE 0 END
+          )
+          - SUM(
+              CASE WHEN {CUBE}.is_viable = true
+              THEN
                 CASE 
                   WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
                   THEN {CUBE}.precio * 0.70
                   ELSE {CUBE}.costo
-                END
-                * {CUBE}.cantidad
+                END * {CUBE}.cantidad
+              ELSE 0 END
+            )
+        type: number
+        format: currency
+        title: "Utilidad Bruta"
+
+      - name: margenBruto
+        sql: >
+          (
+            SUM(
+              CASE WHEN {CUBE}.is_viable = true
+              THEN {CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0)
+              ELSE 0 END
+            )
+            - SUM(
+                CASE WHEN {CUBE}.is_viable = true
+                THEN
+                  CASE 
+                    WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
+                    THEN {CUBE}.precio * 0.70
+                    ELSE {CUBE}.costo
+                  END * {CUBE}.cantidad
+                ELSE 0 END
               )
           )
           / NULLIF(
-              SUM({CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0))
+              SUM(
+                CASE WHEN {CUBE}.is_viable = true
+                THEN {CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0)
+                ELSE 0 END
+              )
             , 0)
         type: number
         format: percent
         title: "Margen Bruto %"
-        filters: [{ sql: "{CUBE}.is_viable = true" }]
