@@ -127,10 +127,11 @@ cubes:
         sql: |
           CASE 
             WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
-            THEN {CUBE}.precio * 0.80   -- Estimación: margen bruto del 20%
-            ELSE {CUBE}.costo           -- Costo real registrado
+            THEN {CUBE}.precio * 0.70
+            ELSE {CUBE}.costo
           END
         type: number
+        title: "Costo Unitario Calculado"
 
       # Año de la fecha de venta. Útil para filtros y agrupaciones anuales.
       - name: anio
@@ -285,10 +286,8 @@ cubes:
         sql: >
           SUM(
             CASE 
-              WHEN {CUBE}.costo <= 0 
-                OR {CUBE}.costo > {CUBE}.precio 
-                
-              THEN {CUBE}.precio * 0.80
+              WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
+              THEN {CUBE}.precio * 0.70
               ELSE {CUBE}.costo
             END
             * {CUBE}.cantidad
@@ -296,6 +295,7 @@ cubes:
         type: number
         format: currency
         title: "Costo Total"
+        filters: [{ sql: "{CUBE}.is_viable = true" }]
 
       - name: utilidadBruta
         sql: >
@@ -303,7 +303,7 @@ cubes:
           - SUM(
               CASE 
                 WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
-                THEN {CUBE}.precio * 0.80
+                THEN {CUBE}.precio * 0.70
                 ELSE {CUBE}.costo
               END
               * {CUBE}.cantidad
@@ -311,6 +311,7 @@ cubes:
         type: number
         format: currency
         title: "Utilidad Bruta"
+        filters: [{ sql: "{CUBE}.is_viable = true" }]
 
       - name: margenBruto
         sql: >
@@ -319,7 +320,7 @@ cubes:
             - SUM(
                 CASE 
                   WHEN {CUBE}.costo <= 0 OR {CUBE}.costo > {CUBE}.precio 
-                  THEN {CUBE}.precio * 0.80
+                  THEN {CUBE}.precio * 0.70
                   ELSE {CUBE}.costo
                 END
                 * {CUBE}.cantidad
@@ -331,3 +332,4 @@ cubes:
         type: number
         format: percent
         title: "Margen Bruto %"
+        filters: [{ sql: "{CUBE}.is_viable = true" }]
