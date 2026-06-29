@@ -348,3 +348,21 @@ cubes:
         type: number
         format: percent
         title: "Margen Bruto %"
+
+      - name: ventaTotal
+        sql: |
+          CASE WHEN {CUBE}.is_viable = true
+          THEN
+            {CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0)
+            +
+            CASE
+              WHEN {CUBE}.impuesto = 16
+              THEN {CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0) * 0.16
+              WHEN {CUBE}.impuesto = 8
+              THEN {CUBE}.precio * {CUBE}.cantidad * (1 - COALESCE({CUBE}.descuento, 0) / 100.0) * 0.08
+              ELSE 0
+            END
+          ELSE 0 END
+        type: sum
+        format: currency
+        title: "Venta Total"

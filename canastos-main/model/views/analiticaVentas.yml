@@ -61,6 +61,9 @@ views:
           - cantidadVendida # Total de unidades vendidas
           - conteoTickets # Número de folios únicos (≈ clientes atendidos)
 
+          - name: ventaTotal
+            alias: ventaTotal
+
       # -----------------------------------------------------------------------
       # BLOQUE 2: Campos del cubo "ventas" (cabecero)
       # Accedido mediante la relación partidasVenta → ventas.
@@ -78,6 +81,9 @@ views:
           - observacion # Observación del documento (ej: "TICKETS ANEXOS")
           - estado # Estado del documento (ej: PE = pendiente)
           - clientesUnicos # Clientes con código registrado (excluye mostrador 'sys')
+
+          - name: impuestoSinDuplicar
+            alias: impuestoRealSinDuplicar
 
       # -----------------------------------------------------------------------
       # BLOQUE 3: Campos del catálogo de productos
@@ -133,40 +139,40 @@ views:
       # Venta total al consumidor final = ingreso bruto + impuestos calculados.
       # Esta es la cifra que el cliente pagó realmente (precio con impuestos incluidos).
       # Se calcula sumando la base gravable (ventaBruta) más los impuestos correspondientes.
-      - name: ventaTotal
-        sql: |
-          SUM(
-            CASE WHEN {partidasVenta}.is_viable = true
-            THEN
-              {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0)
-              +
-              CASE
-                WHEN {partidasVenta}.impuesto = 16
-                THEN {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0) * 0.16
-                WHEN {partidasVenta}.impuesto = 8
-                THEN {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0) * 0.08
-                ELSE 0
-              END
-            ELSE 0 END
-          )
-        type: number
-        format: currency
-        title: "Venta Total (Final)"
+      # - name: ventaTotal
+      #   sql: |
+      #     SUM(
+      #       CASE WHEN {partidasVenta}.is_viable = true
+      #       THEN
+      #         {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0)
+      #         +
+      #         CASE
+      #           WHEN {partidasVenta}.impuesto = 16
+      #           THEN {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0) * 0.16
+      #           WHEN {partidasVenta}.impuesto = 8
+      #           THEN {partidasVenta}.precio * {partidasVenta}.cantidad * (1 - COALESCE({partidasVenta}.descuento, 0) / 100.0) * 0.08
+      #           ELSE 0
+      #         END
+      #       ELSE 0 END
+      #     )
+      #   type: number
+      #   format: currency
+      #   title: "Venta Total (Final)"
 
       # Impuesto real tomado directamente del cabecero de ventas, sin duplicados.
       # A diferencia de los impuestos calculados en partidasVenta (que se derivan
       # del precio × tasa), este campo usa el impuesto ya registrado en el sistema
       # contable para los tipos de documento finales (FAC, REM, DV, DEV).
       # Útil para cuadrar con los reportes fiscales del sistema original.
-      - name: impuestoRealSinDuplicar
-        sql: |
-          SUM(
-            CASE
-              WHEN {partidasVenta.ventas}.tipo_doc IN ('FAC', 'REM', 'DV', 'DEV')
-              THEN {partidasVenta.ventas}.impuesto
-              ELSE 0
-            END
-          )
-        type: number
-        format: currency
-        title: "Impuestos Reales (Sin Duplicados)"
+      # - name: impuestoRealSinDuplicar
+      #   sql: |
+      #     SUM(
+      #       CASE
+      #         WHEN {partidasVenta.ventas}.tipo_doc IN ('FAC', 'REM', 'DV', 'DEV')
+      #         THEN {partidasVenta.ventas}.impuesto
+      #         ELSE 0
+      #       END
+      #     )
+      #   type: number
+      #   format: currency
+      # title: "Impuestos Reales (Sin Duplicados)"
