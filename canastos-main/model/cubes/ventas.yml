@@ -92,9 +92,7 @@ cubes:
         sql: |
           {CUBE}.is_viable = true 
           AND ({CUBE}.observ IS NULL OR {CUBE}.observ NOT LIKE '%TICKETS ANEXOS%')
-          AND NOT ({CUBE}.cliente IN ('sys', 'SYS'))
-          # AND NOT ({CUBE}.cliente IN ('sys', 'SYS') AND {CUBE}.tipo_doc = 'FAC')
-          # AND NOT ({CUBE}.cliente IN ('sys', 'SYS') AND {CUBE}.tipo_doc IN ('FAC', 'REM'))
+          AND NOT ({CUBE}.cliente IN ('sys', 'SYS') AND {CUBE}.tipo_doc = 'FAC')
           AND {CUBE}.estado <> 'PE'
         title: "Ventas Reales (Filtros Aplicados)"
 
