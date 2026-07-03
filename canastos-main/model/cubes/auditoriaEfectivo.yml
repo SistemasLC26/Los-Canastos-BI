@@ -182,8 +182,8 @@ cubes:
         type: time
       - name: anio
         title: "Año"
-        sql: "year(fecha)"
-        type: number
+        sql: "CAST(fecha AS TIMESTAMP)"
+        type: time
 
       - name: mes
         title: "Mes"
