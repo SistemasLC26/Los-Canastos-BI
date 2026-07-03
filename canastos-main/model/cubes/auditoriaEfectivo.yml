@@ -178,12 +178,13 @@ cubes:
 
       - name: fechaCorte
         title: "Fecha Corte"
-        sql: fecha
-        type: time
-      - name: anio
-        title: "Año"
         sql: "CAST(fecha AS TIMESTAMP)"
         type: time
+
+      - name: anio
+        title: "Año"
+        sql: "year(fecha)"
+        type: number
 
       - name: mes
         title: "Mes"
