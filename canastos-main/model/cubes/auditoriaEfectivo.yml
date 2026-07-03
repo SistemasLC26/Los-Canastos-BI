@@ -170,6 +170,12 @@ cubes:
          AND COALESCE(c.sucursal, v.sucursal) = d.sucursal
 
     dimensions:
+      - name: id
+        sql: "{CUBE}.sucursal || '-' || CAST({CUBE}.fecha AS VARCHAR) || '-' || COALESCE({CUBE}.estacion, '') || '-' || COALESCE(CAST({CUBE}.numero_corte AS VARCHAR), '')"
+        type: string
+        primary_key: true
+        title: "ID Corte"
+
       - name: fechaCorte
         title: "Fecha Corte"
         sql: fecha
