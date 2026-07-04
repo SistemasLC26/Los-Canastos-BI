@@ -161,6 +161,8 @@ cubes:
               ELSE 'No'
           END AS diferencia_significativa
 
+          COALESCE(c.fecha, v.fecha, d.fecha) AS partition_date
+
       FROM cortes c
       FULL OUTER JOIN ventas_pago v
           ON c.fecha = v.fecha
@@ -265,6 +267,11 @@ cubes:
         title: "Diferencia Significativa"
         sql: diferencia_significativa
         type: string
+
+      - name: partitionDate
+        sql: "partition_date"
+        type: time
+        public: false
 
     measures:
       - name: efectivoCaja
