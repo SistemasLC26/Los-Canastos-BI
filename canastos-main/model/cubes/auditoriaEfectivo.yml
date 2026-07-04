@@ -161,7 +161,13 @@ cubes:
               ELSE 'No'
           END AS diferencia_significativa,
 
-          COALESCE(c.fecha, v.fecha, d.fecha) AS partition_date
+          COALESCE(
+            TRY(CAST(SUBSTR(c.cajero, 1, 0) AS DATE)),
+            CAST(SUBSTR(COALESCE(
+              (SELECT MAX(partition_date) FROM canastos_tfx.tfx_table_corteszx WHERE CAST(SUBSTR(usufecha,1,10) AS DATE) = COALESCE(c.fecha, v.fecha, d.fecha)),
+              COALESCE(c.fecha, v.fecha, d.fecha)
+            ) AS VARCHAR), 1, 10) AS DATE)
+          ) AS partition_date
 
       FROM cortes c
       FULL OUTER JOIN ventas_pago v
