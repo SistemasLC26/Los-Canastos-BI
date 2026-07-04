@@ -159,7 +159,7 @@ cubes:
           CASE
               WHEN ABS(COALESCE(c.diferencia_corte, 0)) >= 50 THEN 'Sí'
               ELSE 'No'
-          END AS diferencia_significativa
+          END AS diferencia_significativa,
 
           COALESCE(c.fecha, v.fecha, d.fecha) AS partition_date
 
