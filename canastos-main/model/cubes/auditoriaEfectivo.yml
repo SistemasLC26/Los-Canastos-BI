@@ -191,7 +191,7 @@ cubes:
       # Se convierte a TIMESTAMP porque Preset requiere ese tipo para filtros temporales.
       - name: fechaCorte
         title: "Fecha Corte"
-        sql: "CAST({CUBE}.partition_date AS TIMESTAMP)"
+        sql: "CAST({CUBE}.fecha AS TIMESTAMP)"
         type: time
 
       # Campo de partición real de Athena.
