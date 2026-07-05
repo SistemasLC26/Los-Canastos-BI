@@ -16,7 +16,7 @@ cubes:
               COUNT(*) AS tickets
           FROM canastos_tfx.tfx_table_ventas v
           WHERE v.estado IN ('CO','CA')
-            AND regexp_like(v.usufecha, '^20[0-9]-')
+            AND regexp_like(v.usufecha, '^20[0-9][0-9]-')
           GROUP BY
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE),
               v.sucursal
@@ -80,7 +80,7 @@ cubes:
               ) AS diferencia_corte
 
           FROM canastos_tfx.tfx_table_corteszx cx
-          WHERE regexp_like(cx.usufecha, '^20[0-9]-')
+          WHERE regexp_like(cx.usufecha, '^20[0-9][0-9]-')
           GROUP BY
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE),
               cx.sucursal,
@@ -107,7 +107,7 @@ cubes:
               ON v.venta = p.venta
              AND v.sucursal = p.sucursal
           WHERE v.estado IN ('CO','CA')
-            AND regexp_like(v.usufecha, '^20[0-9]-')
+            AND regexp_like(v.usufecha, '^20[0-9][0-9]-')
           GROUP BY
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE),
               v.sucursal
