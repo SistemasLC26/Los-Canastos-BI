@@ -95,7 +95,60 @@ cubes:
       )
 
       SELECT
-          -- ... el SELECT final queda idéntico al de auditoriaEfectivo
+          COALESCE(c.fecha, v.fecha, d.fecha)           AS fecha,
+          COALESCE(c.sucursal, v.sucursal, d.sucursal)  AS sucursal,
+
+          -- partition_date real de Athena expuesto para que Cube
+          -- pueda filtrar las particiones correctamente en cada query.
+          -- Sin esto, Cube escanea solo las particiones más recientes.
+          COALESCE(c.partition_date, v.partition_date, d.partition_date) AS partition_date,
+
+          c.estacion,
+          c.numero_corte,
+          c.tipo_corte,
+          c.cajero,
+
+          COALESCE(v.efectivo, 0)       AS efectivo,
+          COALESCE(v.tarjeta, 0)        AS tarjeta,
+          COALESCE(v.mixtas, 0)         AS mixtas,
+          COALESCE(v.pago3, 0)          AS pago3,
+          COALESCE(v.ventas_totales, 0) AS ventas_totales,
+          COALESCE(v.tickets, 0)        AS tickets,
+
+          COALESCE(c.ventas_reportadas_z, 0) AS ventas_reportadas_z,
+          COALESCE(c.total_corte, 0)         AS total_corte,
+          COALESCE(c.total_caja, 0)          AS total_caja,
+          COALESCE(c.total_itotal, 0)        AS total_itotal,
+          COALESCE(c.ventas_credito, 0)      AS ventas_credito,
+          COALESCE(c.clientes_atendidos, 0)  AS clientes_atendidos,
+
+          COALESCE(c.ventas0, 0)    AS ventas0,
+          COALESCE(c.impuesto0, 0)  AS impuesto0,
+          COALESCE(c.ventas8, 0)    AS ventas8,
+          COALESCE(c.impuesto8, 0)  AS impuesto8,
+          COALESCE(c.ventas16, 0)   AS ventas16,
+          COALESCE(c.impuesto16, 0) AS impuesto16,
+
+          COALESCE(d.devoluciones0, 0)           AS devoluciones0,
+          COALESCE(d.devoluciones8, 0)           AS devoluciones8,
+          COALESCE(d.impuesto_devoluciones8, 0)  AS impuesto_devoluciones8,
+          COALESCE(d.devoluciones16, 0)          AS devoluciones16,
+          COALESCE(d.impuesto_devoluciones16, 0) AS impuesto_devoluciones16,
+          COALESCE(d.total_devoluciones, 0)      AS total_devoluciones,
+
+          COALESCE(c.diferencia_corte, 0) AS diferencia_corte,
+
+          CASE
+              WHEN COALESCE(c.diferencia_corte, 0) = 0 THEN 'SIN DIF'
+              WHEN COALESCE(c.diferencia_corte, 0) < 0 THEN 'FALTANTE'
+              ELSE 'SOBRANTE'
+          END AS tipo_diferencia,
+
+          CASE
+              WHEN ABS(COALESCE(c.diferencia_corte, 0)) >= 50 THEN 'Sí'
+              ELSE 'No'
+          END AS diferencia_significativa
+
       FROM cortes c
       FULL OUTER JOIN ventas_pago v ON c.fecha = v.fecha AND c.sucursal = v.sucursal
       FULL OUTER JOIN devoluciones d ON COALESCE(c.fecha, v.fecha) = d.fecha AND COALESCE(c.sucursal, v.sucursal) = d.sucursal
