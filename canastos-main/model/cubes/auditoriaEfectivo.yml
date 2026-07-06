@@ -27,7 +27,7 @@ cubes:
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE) AS fecha,
               cx.sucursal,
               cx.estacion,
-              cx.corte AS numero_corte,
+              cx.numerocorte AS numero_corte,
               cx.corte AS tipo_corte,
               cx.cajero,
               MAX(cx.partition_date) AS partition_date,  -- ← para que Cube sepa qué particiones escanear
@@ -85,7 +85,7 @@ cubes:
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE),
               cx.sucursal,
               cx.estacion,
-              cx.corte,
+              cx.numerocorte,
               cx.cajero
       ),
 
