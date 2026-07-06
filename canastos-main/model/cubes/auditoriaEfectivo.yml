@@ -85,6 +85,7 @@ cubes:
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE),
               cx.sucursal,
               cx.estacion,
+              cx.corte,
               cx.numerocorte,
               cx.cajero
       ),
