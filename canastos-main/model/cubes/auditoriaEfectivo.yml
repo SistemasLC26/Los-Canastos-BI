@@ -385,6 +385,12 @@ cubes:
         type: sum
         format: currency
 
+      - name: totalItotal
+        title: "Total iTotal"
+        sql: total_itotal
+        type: sum
+        format: currency
+
       - name: totalEntregado
         title: "Total Entregado"
         sql: total_itotal
