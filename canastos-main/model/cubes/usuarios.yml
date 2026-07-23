@@ -6,7 +6,7 @@ cubes:
         u.nombre,
         u.sucursal,
         MAX(u.partition_date) AS partition_date
-      FROM canastos_tfx.tfc_table_usuarios u
+      FROM canastos_tfx.tfx_table_usuarios u
       GROUP BY
         u.usuario,
         u.nombre,

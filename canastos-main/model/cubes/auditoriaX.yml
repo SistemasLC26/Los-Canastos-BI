@@ -147,7 +147,7 @@ cubes:
       FULL OUTER JOIN ventas_pago v ON c.fecha = v.fecha AND c.sucursal = v.sucursal
       FULL OUTER JOIN devoluciones d ON COALESCE(c.fecha, v.fecha) = d.fecha AND COALESCE(c.sucursal, v.sucursal) = d.sucursal
 
-    join:
+    joins:
       - name: usuarios
         sql: "{CUBE}.cajero = {usuarios}.usuario AND {CUBE}.sucursal = {usuarios}.sucursal"
         relationship: many_to_one
