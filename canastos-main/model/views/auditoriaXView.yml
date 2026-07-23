@@ -20,7 +20,7 @@ views:
           - nombreMes
 
           - efectivoCaja
-          - ventasReportadasZ
+          - ventasReportadasX
           - diferenciaConteoVsCaja
           - diferencia
           - porcentajeDiferencia
