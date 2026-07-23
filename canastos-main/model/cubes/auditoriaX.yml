@@ -30,7 +30,7 @@ cubes:
               cx.cajero,
               MAX(cx.partition_date) AS partition_date,
 
-              SUM(cx.totalventas) AS ventas_reportadas_z,  -- podés renombrar a "ventas_reportadas_x" si querés más claridad
+              SUM(cx.totalventas) AS ventas_reportadas_x,
               SUM(cx.totalventas) AS total_corte,
               SUM(cx.totalcaja) AS total_caja,
               SUM(cx.itotal) AS total_itotal,
