@@ -1,4 +1,4 @@
-cube:
+cubes:
   - name: usuarios
     sql: |
       SELECT
