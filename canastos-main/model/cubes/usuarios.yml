@@ -1,0 +1,36 @@
+cube:
+  - name: usuarios
+    sql: |
+      SELECT
+        u.usuario,
+        u.nombre,
+        u.sucursal,
+        MAX(u.partition_date) AS partition_date
+      FROM canastos_tfx.tfc_table_usuarios u
+      GROUP BY
+        u.usuario,
+        u.nombre,
+        u.sucursal
+
+    dimensions:
+      - name: id
+        sql: "{CUBE}.usuario || '-' || COALESCE({CUBE}.sucursal, '')"
+        type: string
+        primary_key: true
+
+      - name: usuario
+        sql: usuario
+        type: string
+
+      - name: nombre
+        title: "Nombre Cajero"
+        sql: nombre
+        type: string
+
+      - name: sucursal
+        sql: sucursal
+        type: string
+
+    measures:
+      - name: count
+        type: count

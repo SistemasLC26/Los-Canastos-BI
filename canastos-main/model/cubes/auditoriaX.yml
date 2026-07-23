@@ -2,8 +2,6 @@ cubes:
   - name: auditoriaX
     sql: |
       WITH ventas_pago AS (
-          -- Esta parte queda IGUAL, porque las ventas vienen de la misma tabla
-          -- (tfx_table_ventas) sin importar si es corte X o Z
           SELECT
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE) AS fecha,
               v.sucursal,
@@ -23,7 +21,6 @@ cubes:
       ),
 
       cortes AS (
-          -- 👇 ÚNICO CAMBIO REAL: tfx_table_corteszx → tfx_table_cortesxx
           SELECT
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE) AS fecha,
               cx.sucursal,
@@ -74,7 +71,6 @@ cubes:
       ),
 
       devoluciones AS (
-          -- Esta parte también queda igual (misma tabla tfx_table_ventas + tfx_table_partvta)
           SELECT
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE) AS fecha,
               v.sucursal,
@@ -99,9 +95,6 @@ cubes:
           COALESCE(c.fecha, v.fecha, d.fecha)           AS fecha,
           COALESCE(c.sucursal, v.sucursal, d.sucursal)  AS sucursal,
 
-          -- partition_date real de Athena expuesto para que Cube
-          -- pueda filtrar las particiones correctamente en cada query.
-          -- Sin esto, Cube escanea solo las particiones más recientes.
           COALESCE(c.partition_date, v.partition_date, d.partition_date) AS partition_date,
 
           c.estacion,
@@ -116,7 +109,7 @@ cubes:
           COALESCE(v.ventas_totales, 0) AS ventas_totales,
           COALESCE(v.tickets, 0)        AS tickets,
 
-          COALESCE(c.ventas_reportadas_z, 0) AS ventas_reportadas_z,
+          COALESCE(c.ventas_reportadas_x, 0) AS ventas_reportadas_x,
           COALESCE(c.total_corte, 0)         AS total_corte,
           COALESCE(c.total_caja, 0)          AS total_caja,
           COALESCE(c.total_itotal, 0)        AS total_itotal,
@@ -153,6 +146,11 @@ cubes:
       FROM cortes c
       FULL OUTER JOIN ventas_pago v ON c.fecha = v.fecha AND c.sucursal = v.sucursal
       FULL OUTER JOIN devoluciones d ON COALESCE(c.fecha, v.fecha) = d.fecha AND COALESCE(c.sucursal, v.sucursal) = d.sucursal
+
+    join:
+      - name: usuarios
+        sql: "{CUBE}.cajero = {usuarios}.usuario AND {CUBE}.sucursal = {usuarios}.sucursal"
+        relationship: many_to_one
 
     dimensions:
       # Llave primaria única por corte.
@@ -286,10 +284,10 @@ cubes:
         type: sum
         format: currency
 
-      # Total de ventas según el reporte Z del sistema de punto de venta.
-      - name: ventasReportadasZ
-        title: "Ventas Reportadas Z"
-        sql: ventas_reportadas_z
+      # Total de ventas según el reporte X del sistema de punto de venta.
+      - name: ventasReportadasX
+        title: "Ventas Reportadas X"
+        sql: ventas_reportadas_x
         type: sum
         format: currency
 

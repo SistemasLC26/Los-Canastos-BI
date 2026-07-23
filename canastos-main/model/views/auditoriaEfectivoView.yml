@@ -54,3 +54,6 @@ views:
           - devoluciones16
           - impuestoDevoluciones16
           - totalDevoluciones
+      - join_path: auditoriaEfectivo.usuarios
+        includes:
+          - nombre
