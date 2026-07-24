@@ -61,6 +61,7 @@ cubes:
 
           FROM canastos_tfx.tfx_table_cortesxx cx   -- ← este es el cambio
           WHERE regexp_like(cx.usufecha, '^20[0-9][0-9]-')
+            AND cx.sucursal NOT LIKE '% - %'
           GROUP BY
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE),
               cx.sucursal,
@@ -149,7 +150,7 @@ cubes:
 
     joins:
       - name: usuarios
-        sql: "{CUBE}.cajero = {usuarios}.usuario AND {CUBE}.sucursal = {usuarios}.sucursal"
+        sql: "UPPER({CUBE}.cajero) = UPPER({usuarios}.usuario) AND {CUBE}.sucursal = {usuarios}.sucursal"
         relationship: many_to_one
 
     dimensions:

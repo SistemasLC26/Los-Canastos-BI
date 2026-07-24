@@ -179,7 +179,7 @@ cubes:
 
     joins:
       - name: usuarios
-        sql: "{CUBE}.cajero = {usuarios}.usuario AND {CUBE}.sucursal = {usuarios}.sucursal"
+        sql: "UPPER({CUBE}.cajero) = UPPER({usuarios}.usuario) AND {CUBE}.sucursal = {usuarios}.sucursal"
         relationship: many_to_one
 
     dimensions:
