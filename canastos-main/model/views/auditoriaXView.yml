@@ -1,45 +1,43 @@
 views:
   - name: auditoriaXView
     title: "Auditoría X"
+    # -------------------------------------------------------------------------
+    # NOTA (2026-08): Se eliminaron los campos de detalle por caja individual
+    # (estacion, numeroCorte, tipoCorte, horaCorte, cajero) porque el cubo
+    # ahora agrega los cortes por fecha+sucursal para evitar el fan-out.
+    # -------------------------------------------------------------------------
 
     cubes:
       - join_path: auditoriaX
         includes:
           - fechaCorte
           - sucursal
-          - estacion
-          - numeroCorte
-          - tipoCorte
-          - horaCorte
-          - cajero
-
           - anio
           - mes
           - dia
           - diaSemana
           - nombreMes
-
-          - efectivoCaja
-          - ventasReportadasX
-          - diferenciaConteoVsCaja
-          - diferencia
-          - porcentajeDiferencia
-          - diferenciaSignificativa
           - tipoDiferencia
+          - diferenciaSignificativa
 
           - efectivo
           - tarjeta
           - mixtas
           - pago3
-
           - ventasTotales
           - tickets
+
+          - ventasReportadasX
           - totalCorte
           - totalCaja
           - totalItotal
           - totalEntregado
           - ventasCredito
           - clientesAtendidos
+
+          - diferencia
+          - diferenciaCorte
+          - porcentajeDiferencia
 
           - ventas0
           - impuesto0
@@ -54,6 +52,34 @@ views:
           - devoluciones16
           - impuestoDevoluciones16
           - totalDevoluciones
-      - join_path: auditoriaX.usuarios
+
+      - join_path: auditoriaXDetalle
+        prefix: true
+        includes:
+          - estacion
+          - numeroCorte
+          - tipoCorte
+          - horaCorte
+          - cajero
+          - tipoDiferencia
+          - diferenciaSignificativa
+          - totalCorte
+          - totalCaja
+          - totalItotal
+          - totalEntregado
+          - ventasReportadasX
+          - diferencia
+          - diferenciaCorte
+          - ventasCredito
+          - clientesAtendidos
+          - ventas0
+          - impuesto0
+          - ventas8
+          - impuesto8
+          - ventas16
+          - impuesto16
+
+      - join_path: auditoriaXDetalle.usuarios
+        prefix: true
         includes:
           - nombre

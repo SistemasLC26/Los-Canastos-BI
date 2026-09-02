@@ -2,11 +2,32 @@ cubes:
   - name: auditoriaEfectivo
 
     sql: |
+      -- ==========================================================================
+      -- CORRECCIÓN DE FAN-OUT (2026-08):
+      -- El bug original agrupaba los cortes por caja/estación/cajero, produciendo
+      -- múltiples filas por día+sucursal. Al hacer FULL OUTER JOIN contra ventas
+      -- y devoluciones (que sí tienen una fila por día+sucursal), el valor de
+      -- efectivo/tarjeta se repetía tantas veces como cajas hubiera ese día.
+      -- En sábados con 3 cajas abiertas, el efectivo se inflaba 3x.
+      --
+      -- SOLUCIÓN: agregar los cortes primero por fecha+sucursal (igual que ya
+      -- lo hace correctamente el reporte de Reconciliación Diaria), antes de
+      -- unirlos con ventas y devoluciones.
+      --
+      -- EFECTO COLATERAL: se pierden columnas de detalle por caja individual
+      -- (estación, número de corte, cajero). La vista auditoriaEfectivoView
+      -- fue actualizada para reflejar este cambio.
+      --
+      -- FILTROS AGREGADOS:
+      --   - Excluye sucursal de pruebas 'DPBodega-Test'
+      --   - Excluye estación de cobranza (COBRANZA) que no es caja de ventas
+      -- ==========================================================================
+
       WITH ventas_pago AS (
           SELECT
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE) AS fecha,
               v.sucursal,
-              MAX(v.partition_date) AS partition_date,  -- ← para que Cube sepa qué particiones escanear
+              MAX(v.partition_date) AS partition_date,
 
               SUM(CASE WHEN v.pago1 > 0 AND v.pago2 = 0 THEN v.importe + v.impuesto ELSE 0 END) AS efectivo,
               SUM(CASE WHEN v.pago2 > 0 AND v.pago1 = 0 THEN v.importe + v.impuesto ELSE 0 END) AS tarjeta,
@@ -17,59 +38,43 @@ cubes:
           FROM canastos_tfx.tfx_table_ventas v
           WHERE v.estado IN ('CO','CA')
             AND regexp_like(v.usufecha, '^20[0-9][0-9]-')
+            AND v.sucursal <> 'DPBodega-Test'
           GROUP BY
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE),
               v.sucursal
       ),
 
       cortes AS (
+          -- CORRECCIÓN: ahora agrupamos SOLO por fecha+sucursal.
+          -- Antes se agrupaba también por estación, número de corte y cajero,
+          -- lo que producía múltiples filas por día+sucursal y causaba el fan-out.
           SELECT
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE) AS fecha,
               cx.sucursal,
-              cx.estacion,
-              cx.numerocorte AS numero_corte,
-              cx.corte AS tipo_corte,
-              cx.cajero,
-              MAX(cx.partition_date) AS partition_date,  -- ← para que Cube sepa qué particiones escanear
+              MAX(cx.partition_date) AS partition_date,
 
-              SUM(cx.totalventas) AS ventas_reportadas_z,
-              SUM(cx.totalventas) AS total_corte,
-              SUM(cx.totalcaja) AS total_caja,
-              SUM(cx.itotal) AS total_itotal,
-              SUM(cx.ventascredito) AS ventas_credito,
+              SUM(cx.totalventas)       AS ventas_reportadas_z,
+              SUM(cx.totalventas)       AS total_corte,
+              SUM(cx.totalcaja)         AS total_caja,
+              SUM(cx.itotal)            AS total_itotal,
+              SUM(cx.ventascredito)     AS ventas_credito,
               SUM(cx.clientesatendidos) AS clientes_atendidos,
 
               SUM(cx.ventasimpuesto15) AS ventas0,
-              SUM(cx.impuesto15) AS impuesto0,
+              SUM(cx.impuesto15)       AS impuesto0,
 
               SUM(
-                  (
-                      cx.totalventas -
-                      (
-                          cx.impuesto15 +
-                          cx.impuesto10 +
-                          cx.ventasimpuesto10 +
-                          cx.ventasimpuesto15
-                      )
-                  ) / 1.08
+                  (cx.totalventas - (cx.impuesto15 + cx.impuesto10 + cx.ventasimpuesto10 + cx.ventasimpuesto15))
+                  / 1.08
               ) AS ventas8,
 
               SUM(
-                  (
-                      (
-                          cx.totalventas -
-                          (
-                              cx.impuesto15 +
-                              cx.impuesto10 +
-                              cx.ventasimpuesto10 +
-                              cx.ventasimpuesto15
-                          )
-                      ) / 1.08
-                  ) * 0.08
+                  ((cx.totalventas - (cx.impuesto15 + cx.impuesto10 + cx.ventasimpuesto10 + cx.ventasimpuesto15))
+                  / 1.08) * 0.08
               ) AS impuesto8,
 
               SUM(cx.ventasimpuesto10) AS ventas16,
-              SUM(cx.impuesto10) AS impuesto16,
+              SUM(cx.impuesto10)       AS impuesto16,
 
               SUM(
                   CASE
@@ -81,52 +86,41 @@ cubes:
 
           FROM canastos_tfx.tfx_table_corteszx cx
           WHERE regexp_like(cx.usufecha, '^20[0-9][0-9]-')
+            AND cx.sucursal <> 'DPBodega-Test'
+            AND cx.estacion <> 'COBRANZA'
           GROUP BY
               CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE),
-              cx.sucursal,
-              cx.estacion,
-              cx.corte,
-              cx.numerocorte,
-              cx.cajero
+              cx.sucursal
       ),
 
       devoluciones AS (
           SELECT
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE) AS fecha,
               v.sucursal,
-              MAX(v.partition_date) AS partition_date,  -- ← para que Cube sepa qué particiones escanear
+              MAX(v.partition_date) AS partition_date,
 
-              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 0 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones0,
-              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 8 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones8,
-              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 8 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) * 0.08 ELSE 0 END) AS impuesto_devoluciones8,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 0  THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones0,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 8  THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones8,
+              SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 8  THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) * 0.08 ELSE 0 END) AS impuesto_devoluciones8,
               SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 16 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) ELSE 0 END) AS devoluciones16,
               SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') AND p.impuesto = 16 THEN ABS(p.cantidad) * p.precio * (1 - (p.descuento / 100.0)) * 0.16 ELSE 0 END) AS impuesto_devoluciones16,
               SUM(CASE WHEN v.tipo_doc IN ('DEV','DV') THEN v.importe + v.impuesto ELSE 0 END) AS total_devoluciones
 
           FROM canastos_tfx.tfx_table_ventas v
           INNER JOIN canastos_tfx.tfx_table_partvta p
-              ON v.venta = p.venta
-             AND v.sucursal = p.sucursal
+              ON v.venta = p.venta AND v.sucursal = p.sucursal
           WHERE v.estado IN ('CO','CA')
             AND regexp_like(v.usufecha, '^20[0-9][0-9]-')
+            AND v.sucursal <> 'DPBodega-Test'
           GROUP BY
               CAST(SUBSTR(v.usufecha, 1, 10) AS DATE),
               v.sucursal
       )
 
       SELECT
-          COALESCE(c.fecha, v.fecha, d.fecha)           AS fecha,
-          COALESCE(c.sucursal, v.sucursal, d.sucursal)  AS sucursal,
-
-          -- partition_date real de Athena expuesto para que Cube
-          -- pueda filtrar las particiones correctamente en cada query.
-          -- Sin esto, Cube escanea solo las particiones más recientes.
+          COALESCE(c.fecha, v.fecha, d.fecha)          AS fecha,
+          COALESCE(c.sucursal, v.sucursal, d.sucursal) AS sucursal,
           COALESCE(c.partition_date, v.partition_date, d.partition_date) AS partition_date,
-
-          c.estacion,
-          c.numero_corte,
-          c.tipo_corte,
-          c.cajero,
 
           COALESCE(v.efectivo, 0)       AS efectivo,
           COALESCE(v.tarjeta, 0)        AS tarjeta,
@@ -171,40 +165,23 @@ cubes:
 
       FROM cortes c
       FULL OUTER JOIN ventas_pago v
-          ON c.fecha = v.fecha
-         AND c.sucursal = v.sucursal
+          ON c.fecha = v.fecha AND c.sucursal = v.sucursal
       FULL OUTER JOIN devoluciones d
           ON COALESCE(c.fecha, v.fecha) = d.fecha
          AND COALESCE(c.sucursal, v.sucursal) = d.sucursal
 
-    joins:
-      - name: usuarios
-        sql: "UPPER({CUBE}.cajero) = UPPER({usuarios}.usuario) AND {CUBE}.sucursal = {usuarios}.sucursal"
-        relationship: many_to_one
-
     dimensions:
-      # Llave primaria única por corte.
-      # Combina sucursal + fecha + estación + número de corte.
-      # COALESCE en estacion y numero_corte porque en filas donde solo hay
-      # ventas o devoluciones (sin corte Z), esos campos son NULL.
       - name: id
-        sql: "{CUBE}.sucursal || '-' || CAST({CUBE}.fecha AS VARCHAR) || '-' || COALESCE({CUBE}.estacion, '') || '-' || COALESCE(CAST({CUBE}.numero_corte AS VARCHAR), '')"
+        sql: "COALESCE({CUBE}.sucursal, '') || '-' || CAST(COALESCE({CUBE}.fecha, DATE '1900-01-01') AS VARCHAR)"
         type: string
         primary_key: true
-        title: "ID Corte"
+        title: "ID Día Sucursal"
 
-      # Fecha del corte Z. Es el campo principal para filtros de fecha en Preset.
-      # Se convierte a TIMESTAMP porque Preset requiere ese tipo para filtros temporales.
       - name: fechaCorte
         title: "Fecha Corte"
         sql: "CAST({CUBE}.fecha AS TIMESTAMP)"
         type: time
 
-      # Campo de partición real de Athena.
-      # No se expone en Preset (public: false) pero Cube lo usa internamente
-      # para decidir qué particiones de S3 escanear en cada query.
-      # Sin este campo, Cube solo escanea las particiones más recientes
-      # y el reporte solo muestra datos de un año.
       - name: partitionDate
         sql: "partition_date"
         type: time
@@ -229,12 +206,8 @@ cubes:
         title: "Día Semana"
         sql: |
           CASE day_of_week(fecha)
-            WHEN 1 THEN 'Lunes'
-            WHEN 2 THEN 'Martes'
-            WHEN 3 THEN 'Miércoles'
-            WHEN 4 THEN 'Jueves'
-            WHEN 5 THEN 'Viernes'
-            WHEN 6 THEN 'Sábado'
+            WHEN 1 THEN 'Lunes'   WHEN 2 THEN 'Martes'    WHEN 3 THEN 'Miércoles'
+            WHEN 4 THEN 'Jueves'  WHEN 5 THEN 'Viernes'   WHEN 6 THEN 'Sábado'
             WHEN 7 THEN 'Domingo'
           END
         type: string
@@ -243,18 +216,10 @@ cubes:
         title: "Nombre Mes"
         sql: |
           CASE month(fecha)
-            WHEN 1 THEN 'Enero'
-            WHEN 2 THEN 'Febrero'
-            WHEN 3 THEN 'Marzo'
-            WHEN 4 THEN 'Abril'
-            WHEN 5 THEN 'Mayo'
-            WHEN 6 THEN 'Junio'
-            WHEN 7 THEN 'Julio'
-            WHEN 8 THEN 'Agosto'
-            WHEN 9 THEN 'Septiembre'
-            WHEN 10 THEN 'Octubre'
-            WHEN 11 THEN 'Noviembre'
-            WHEN 12 THEN 'Diciembre'
+            WHEN 1  THEN 'Enero'      WHEN 2  THEN 'Febrero'    WHEN 3  THEN 'Marzo'
+            WHEN 4  THEN 'Abril'      WHEN 5  THEN 'Mayo'        WHEN 6  THEN 'Junio'
+            WHEN 7  THEN 'Julio'      WHEN 8  THEN 'Agosto'      WHEN 9  THEN 'Septiembre'
+            WHEN 10 THEN 'Octubre'    WHEN 11 THEN 'Noviembre'   WHEN 12 THEN 'Diciembre'
           END
         type: string
 
@@ -262,102 +227,31 @@ cubes:
         sql: sucursal
         type: string
 
-      - name: estacion
-        sql: estacion
-        type: string
-
-      # Número del corte Z. Es un string porque en algunos registros
-      # el valor es 'z' (tipo de corte) y no un número secuencial.
-      - name: numeroCorte
-        title: "Número Corte"
-        sql: numero_corte
-        type: string
-
-      - name: tipoCorte
-        title: "Tipo Corte"
-        sql: tipo_corte
-        type: string
-
-      # Código del cajero que realizó el corte.
-      # Valores típicos: SUP, sup, KAREN, SYS, COBRANZA, etc.
-      # No es un nombre completo — depende de si existe tabla de usuarios.
-      - name: cajero
-        sql: cajero
-        type: string
-
-      # Campo placeholder para hora del corte.
-      # La tabla corteszx no tiene hora separada del corte,
-      # solo usufecha que incluye fecha y hora combinadas.
-      # Se deja vacío hasta que se defina la fuente correcta.
-      - name: horaCorte
-        title: "Hora Corte"
-        sql: "''"
-        type: string
-
       - name: tipoDiferencia
         title: "Tipo Diferencia"
         sql: tipo_diferencia
         type: string
 
-      # Indica si la diferencia de caja es significativa (>= $50).
-      # 'Sí' = requiere revisión, 'No' = diferencia menor aceptable.
       - name: diferenciaSignificativa
         title: "Diferencia Significativa"
         sql: diferencia_significativa
         type: string
 
     measures:
-      # Efectivo contado en caja al momento del corte.
-      - name: efectivoCaja
-        title: "Efectivo Caja"
-        sql: efectivo
-        type: sum
-        format: currency
-
-      # Total de ventas según el reporte Z del sistema de punto de venta.
-      - name: ventasReportadasZ
-        title: "Ventas Reportadas Z"
-        sql: ventas_reportadas_z
-        type: sum
-        format: currency
-
-      # Diferencia entre lo contado en caja y el iTotal del sistema.
-      # Positivo = sobrante, Negativo = faltante.
-      - name: diferenciaConteoVsCaja
-        title: "Diferencia Conteo Vs Caja"
-        sql: diferencia_corte
-        type: sum
-        format: currency
-
-      - name: diferencia
-        title: "Diferencia"
-        sql: diferencia_corte
-        type: sum
-        format: currency
-
-      # Porcentaje que representa la diferencia sobre el total de efectivo.
-      # ⚠️ Usar con precaución: si efectivo = 0 devuelve 0 para evitar división.
-      - name: porcentajeDiferencia
-        title: "Porcentaje Diferencia"
-        sql: |
-          CASE
-            WHEN efectivo = 0 THEN 0
-            ELSE diferencia_corte / efectivo
-          END
-        type: avg
-        format: percent
-
       - name: efectivo
+        title: "Efectivo"
         sql: efectivo
         type: sum
         format: currency
 
       - name: tarjeta
+        title: "Tarjeta"
         sql: tarjeta
         type: sum
         format: currency
 
       - name: mixtas
+        title: "Pagos Mixtos"
         sql: mixtas
         type: sum
         format: currency
@@ -375,11 +269,18 @@ cubes:
         format: currency
 
       - name: tickets
+        title: "Tickets"
         sql: tickets
         type: sum
 
+      - name: ventasReportadasZ
+        title: "Ventas Reportadas Z"
+        sql: ventas_reportadas_z
+        type: sum
+        format: currency
+
       - name: totalCorte
-        title: "Total Corte"
+        title: "Total Corte Z"
         sql: total_corte
         type: sum
         format: currency
@@ -412,6 +313,27 @@ cubes:
         title: "Clientes Atendidos"
         sql: clientes_atendidos
         type: sum
+
+      - name: diferencia
+        title: "Diferencia"
+        sql: diferencia_corte
+        type: sum
+        format: currency
+
+      - name: diferenciaCorte
+        title: "Diferencia Corte"
+        sql: diferencia_corte
+        type: sum
+        format: currency
+
+      - name: porcentajeDiferencia
+        title: "Porcentaje Diferencia"
+        sql: |
+          CASE WHEN efectivo = 0 THEN 0
+               ELSE diferencia_corte / efectivo
+          END
+        type: avg
+        format: percent
 
       - name: ventas0
         title: "Ventas 0%"
@@ -482,11 +404,5 @@ cubes:
       - name: totalDevoluciones
         title: "Total Devoluciones"
         sql: total_devoluciones
-        type: sum
-        format: currency
-
-      - name: diferenciaCorte
-        title: "Diferencia Corte"
-        sql: diferencia_corte
         type: sum
         format: currency

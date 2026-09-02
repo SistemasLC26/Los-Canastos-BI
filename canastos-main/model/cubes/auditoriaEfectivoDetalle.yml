@@ -1,0 +1,266 @@
+cubes:
+  - name: auditoriaEfectivoDetalle
+
+    sql: |
+      -- ==========================================================================
+      -- CUBO DE DETALLE POR CAJA — complemento de auditoriaEfectivo.
+      --
+      -- auditoriaEfectivo agrega por fecha+sucursal (totales diarios).
+      -- Este cubo agrega por fecha+sucursal+estacion+cajero para exponer
+      -- el detalle de cada caja individual.
+      --
+      -- ⚠️ IMPORTANTE: este cubo NO incluye métricas de ventas_pago ni
+      -- devoluciones (efectivo, tarjeta, ventas_totales, etc.) porque esas
+      -- métricas viven a nivel fecha+sucursal y al cruzarlas con el detalle
+      -- de cortes por caja se produciría fan-out (inflación de valores).
+      -- Para totales con efectivo/tarjeta usar auditoriaEfectivoView.
+      -- ==========================================================================
+
+      SELECT
+          CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE) AS fecha,
+          cx.sucursal,
+          cx.estacion,
+          cx.numerocorte                            AS numero_corte,
+          cx.corte                                  AS tipo_corte,
+          cx.cajero,
+          MAX(cx.partition_date)                    AS partition_date,
+
+          SUM(cx.totalventas)       AS ventas_reportadas_z,
+          SUM(cx.totalventas)       AS total_corte,
+          SUM(cx.totalcaja)         AS total_caja,
+          SUM(cx.itotal)            AS total_itotal,
+          SUM(cx.ventascredito)     AS ventas_credito,
+          SUM(cx.clientesatendidos) AS clientes_atendidos,
+
+          SUM(cx.ventasimpuesto15) AS ventas0,
+          SUM(cx.impuesto15)       AS impuesto0,
+
+          SUM(
+              (cx.totalventas - (cx.impuesto15 + cx.impuesto10 + cx.ventasimpuesto10 + cx.ventasimpuesto15))
+              / 1.08
+          ) AS ventas8,
+
+          SUM(
+              ((cx.totalventas - (cx.impuesto15 + cx.impuesto10 + cx.ventasimpuesto10 + cx.ventasimpuesto15))
+              / 1.08) * 0.08
+          ) AS impuesto8,
+
+          SUM(cx.ventasimpuesto10) AS ventas16,
+          SUM(cx.impuesto10)       AS impuesto16,
+
+          SUM(
+              CASE
+                  WHEN cx.totalcaja - cx.itotal > 0 THEN -(cx.totalcaja - cx.itotal)
+                  WHEN cx.totalcaja - cx.itotal < 0 THEN ABS(cx.totalcaja - cx.itotal)
+                  ELSE 0
+              END
+          ) AS diferencia_corte
+
+      FROM canastos_tfx.tfx_table_corteszx cx
+      WHERE regexp_like(cx.usufecha, '^20[0-9][0-9]-')
+        AND cx.sucursal <> 'DPBodega-Test'
+        AND cx.estacion <> 'COBRANZA'
+      GROUP BY
+          CAST(SUBSTR(cx.usufecha, 1, 10) AS DATE),
+          cx.sucursal,
+          cx.estacion,
+          cx.corte,
+          cx.numerocorte,
+          cx.cajero
+
+    joins:
+      - name: usuarios
+        sql: "UPPER({CUBE}.cajero) = UPPER({usuarios.usuario}) AND {CUBE}.sucursal = {usuarios.sucursal}"
+        relationship: many_to_one
+
+    dimensions:
+      - name: id
+        sql: "{CUBE}.sucursal || '-' || CAST({CUBE}.fecha AS VARCHAR) || '-' || COALESCE({CUBE}.estacion, '') || '-' || COALESCE(CAST({CUBE}.numero_corte AS VARCHAR), '')"
+        type: string
+        primary_key: true
+        title: "ID Corte"
+
+      - name: fechaCorte
+        title: "Fecha Corte"
+        sql: "CAST({CUBE}.fecha AS TIMESTAMP)"
+        type: time
+
+      - name: partitionDate
+        sql: "partition_date"
+        type: time
+        public: false
+
+      - name: anio
+        title: "Año"
+        sql: "year(fecha)"
+        type: number
+
+      - name: mes
+        title: "Mes"
+        sql: "month(fecha)"
+        type: number
+
+      - name: dia
+        title: "Día"
+        sql: "day(fecha)"
+        type: number
+
+      - name: diaSemana
+        title: "Día Semana"
+        sql: |
+          CASE day_of_week(fecha)
+            WHEN 1 THEN 'Lunes'   WHEN 2 THEN 'Martes'    WHEN 3 THEN 'Miércoles'
+            WHEN 4 THEN 'Jueves'  WHEN 5 THEN 'Viernes'   WHEN 6 THEN 'Sábado'
+            WHEN 7 THEN 'Domingo'
+          END
+        type: string
+
+      - name: nombreMes
+        title: "Nombre Mes"
+        sql: |
+          CASE month(fecha)
+            WHEN 1  THEN 'Enero'      WHEN 2  THEN 'Febrero'    WHEN 3  THEN 'Marzo'
+            WHEN 4  THEN 'Abril'      WHEN 5  THEN 'Mayo'        WHEN 6  THEN 'Junio'
+            WHEN 7  THEN 'Julio'      WHEN 8  THEN 'Agosto'      WHEN 9  THEN 'Septiembre'
+            WHEN 10 THEN 'Octubre'    WHEN 11 THEN 'Noviembre'   WHEN 12 THEN 'Diciembre'
+          END
+        type: string
+
+      - name: sucursal
+        sql: sucursal
+        type: string
+
+      - name: estacion
+        sql: estacion
+        type: string
+
+      - name: numeroCorte
+        title: "Número Corte"
+        sql: numero_corte
+        type: string
+
+      - name: tipoCorte
+        title: "Tipo Corte"
+        sql: tipo_corte
+        type: string
+
+      - name: cajero
+        title: "Cajero"
+        sql: cajero
+        type: string
+
+      # Hora del corte extraída de usufecha (formato: 'YYYY-MM-DD HH:MM:SS').
+      # Se toman los caracteres 12-19 que corresponden a la hora.
+      - name: horaCorte
+        title: "Hora Corte"
+        sql: "SUBSTR(cx.usufecha, 12, 8)"
+        type: string
+
+      - name: tipoDiferencia
+        title: "Tipo Diferencia"
+        sql: |
+          CASE
+            WHEN diferencia_corte = 0 THEN 'SIN DIF'
+            WHEN diferencia_corte < 0 THEN 'FALTANTE'
+            ELSE 'SOBRANTE'
+          END
+        type: string
+
+      - name: diferenciaSignificativa
+        title: "Diferencia Significativa"
+        sql: |
+          CASE
+            WHEN ABS(diferencia_corte) >= 50 THEN 'Sí'
+            ELSE 'No'
+          END
+        type: string
+
+    measures:
+      - name: ventasReportadasZ
+        title: "Ventas Reportadas Z"
+        sql: ventas_reportadas_z
+        type: sum
+        format: currency
+
+      - name: totalCorte
+        title: "Total Corte Z"
+        sql: total_corte
+        type: sum
+        format: currency
+
+      - name: totalCaja
+        title: "Total Caja"
+        sql: total_caja
+        type: sum
+        format: currency
+
+      - name: totalItotal
+        title: "Total iTotal"
+        sql: total_itotal
+        type: sum
+        format: currency
+
+      - name: totalEntregado
+        title: "Total Entregado"
+        sql: total_itotal
+        type: sum
+        format: currency
+
+      - name: ventasCredito
+        title: "Ventas Crédito"
+        sql: ventas_credito
+        type: sum
+        format: currency
+
+      - name: clientesAtendidos
+        title: "Clientes Atendidos"
+        sql: clientes_atendidos
+        type: sum
+
+      - name: diferencia
+        title: "Diferencia"
+        sql: diferencia_corte
+        type: sum
+        format: currency
+
+      - name: diferenciaCorte
+        title: "Diferencia Corte"
+        sql: diferencia_corte
+        type: sum
+        format: currency
+
+      - name: ventas0
+        title: "Ventas 0%"
+        sql: ventas0
+        type: sum
+        format: currency
+
+      - name: impuesto0
+        title: "Impuesto 0%"
+        sql: impuesto0
+        type: sum
+        format: currency
+
+      - name: ventas8
+        title: "Ventas 8%"
+        sql: ventas8
+        type: sum
+        format: currency
+
+      - name: impuesto8
+        title: "Impuesto 8%"
+        sql: impuesto8
+        type: sum
+        format: currency
+
+      - name: ventas16
+        title: "Ventas 16%"
+        sql: ventas16
+        type: sum
+        format: currency
+
+      - name: impuesto16
+        title: "Impuesto 16%"
+        sql: impuesto16
+        type: sum
+        format: currency
