@@ -57,6 +57,13 @@ views:
       - join_path: auditoriaEfectivoDetalle
         prefix: true
         includes:
+          - fechaCorte
+          - sucursal
+          - anio
+          - mes
+          - dia
+          - diaSemana
+          - nombreMes
           - estacion
           - numeroCorte
           - tipoCorte
